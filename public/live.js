@@ -1,4 +1,4 @@
-/* Physics House workspace: account and business data come from the server. */
+/* Physics Plus workspace: account and business data come from the server. */
 (() => {
   'use strict';
 
@@ -102,7 +102,7 @@
     const csv = '\uFEFF' + [columns.map(quote).join(','), ...rows.map((row) => columns.map((column) => quote(row[column])).join(','))].join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
-    link.href = url; link.download = `physics-house-${dataset}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.href = url; link.download = `physics-plus-${dataset}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     return rows.length;
@@ -199,20 +199,20 @@
   function shell(user) {
     const role = user.role;
     document.body.innerHTML = `
-      <aside class="sidebar" aria-label="เมนูหลัก"><div class="sidebrand"><img src="physics-house-logo-yellow-black.png" alt=""><div><strong>Physics<br>House<span style="color:#ffda39">.</span></strong><small>LEARNING WORKSPACE</small></div></div><div class="nav-label">พื้นที่ของคุณ</div><nav class="side-nav" id="side-nav"></nav><div class="side-profile"><span class="profile-avatar" id="profile-avatar"></span><div><strong id="profile-name"></strong><small id="profile-role"></small></div></div></aside>
-      <header class="live-header"><div class="brand"><img class="mark" src="physics-house-logo-yellow-black.png" alt="โลโก้ Physics House"><div>Physics House<div class="muted" id="header-role"></div></div></div><div class="header-actions"><button type="button" id="password-button">เปลี่ยนรหัสผ่าน</button><button type="button" id="logout-button">ออกจากระบบ</button></div></header>
+      <aside class="sidebar" aria-label="เมนูหลัก"><div class="sidebrand"><img src="physics-plus-logo-yellow-black.png" alt=""><div><strong>Physics<br>Plus<span style="color:#ffda39">.</span></strong><small>LEARNING WORKSPACE</small></div></div><div class="nav-label">พื้นที่ของคุณ</div><nav class="side-nav" id="side-nav"></nav><div class="side-profile"><span class="profile-avatar" id="profile-avatar"></span><div><strong id="profile-name"></strong><small id="profile-role"></small></div></div></aside>
+      <header class="live-header"><div class="brand"><img class="mark" src="physics-plus-logo-yellow-black.png" alt="โลโก้ Physics Plus"><div>Physics Plus<div class="muted" id="header-role"></div></div></div><div class="header-actions"><button type="button" id="password-button">เปลี่ยนรหัสผ่าน</button><button type="button" id="logout-button">ออกจากระบบ</button></div></header>
       <nav class="mobile-nav" id="mobile-nav" aria-label="ส่วนต่าง ๆ ของระบบ"></nav>
-      <main><div class="intro"><div><div class="eyebrow">PHYSICS HOUSE / LEARNING SPACE</div><h1 id="heading"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-house-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics House"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="live-content"></div></main>
+      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="live-content"></div></main>
       <dialog id="live-dialog" class="live-dialog"></dialog>`;
     $('profile-name').textContent = user.name;
-    $('profile-avatar').textContent = user.name.trim().slice(0, 1) || 'PH';
+    $('profile-avatar').textContent = user.name.trim().slice(0, 1) || 'PP';
     $('profile-role').textContent = roleNames[role];
     $('header-role').textContent = roleNames[role];
     $('hero-badge').textContent = `${personalCode(user) !== '—' ? `${personalCode(user)} · ` : ''}${roleNames[role]}`;
     const headlines = {
       student: ['พื้นที่เรียนรู้ของคุณ', 'คอร์สที่เรียนและยอดค่าเรียนของคุณอยู่ที่นี่'],
       teacher: ['จัดการคาบสอนในที่เดียว', 'ดูตารางสอน ลงเวลาจริง และติดตามค่าจ้างที่อนุมัติ'],
-      admin: ['ดูแล Physics House', 'จัดการคอร์ส ค่าเรียน เวลาสอน และการจ่ายค่าจ้าง']
+      admin: ['ดูแล Physics Plus', 'จัดการคอร์ส ค่าเรียน เวลาสอน และการจ่ายค่าจ้าง']
     };
     $('heading').textContent = headlines[role][0];
     $('subtitle').textContent = headlines[role][1];
@@ -220,7 +220,7 @@
       ? [['overview', 'ภาพรวม'], ['student-classes', 'ห้องเรียนของฉัน'], ['catalog', 'สมัครเรียน'], ['student-payments', 'แจ้งชำระ']]
       : role === 'teacher'
         ? [['overview', 'คาบสอน'], ['teacher-time', 'ลงเวลาสอน'], ['teacher-payroll', 'ค่าจ้างของฉัน']]
-        : [['overview', 'ภาพรวม'], ['admin-accounts', 'บัญชีผู้ใช้'], ['admin-classroom', 'ห้องเรียน'], ['admin-enrollments', 'การสมัครเรียน'], ['admin-finance', 'ค่าเรียน'], ['admin-teaching', 'เวลาสอน'], ['admin-rates', 'อัตราค่าจ้าง'], ['admin-management', 'รายวิชา'], ['admin-payroll', 'จ่ายค่าจ้าง'], ['admin-reports', 'ส่งออกข้อมูล']];
+        : [['overview', 'ภาพรวม'], ['admin-staff', 'ครูผู้สอน'], ['admin-accounts', 'บัญชีนักเรียน'], ['admin-classroom', 'ห้องเรียน'], ['admin-enrollments', 'การสมัครเรียน'], ['admin-finance', 'ค่าเรียน'], ['admin-teaching', 'เวลาสอน'], ['admin-rates', 'อัตราค่าจ้าง'], ['admin-management', 'รายวิชา'], ['admin-payroll', 'จ่ายค่าจ้าง'], ['admin-reports', 'ส่งออกข้อมูล']];
     for (const [target, label] of nav) {
       for (const container of [$('side-nav'), $('mobile-nav')]) {
         const button = actionButton(label, 'jump');
@@ -250,13 +250,14 @@
       <section id="teacher-payroll" class="panel new-section"><h2>ประวัติค่าจ้างของฉัน</h2><p class="muted" id="teacher-approved-unpaid"></p><div class="tablewrap"><table><thead><tr><th>งวด</th><th>ยอด</th><th>สถานะ</th><th>วันที่จ่าย</th><th>รายละเอียด</th></tr></thead><tbody id="teacher-payroll-rows"></tbody></table></div></section>`;
     return `
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>คงค้างในใบแจ้งยอดล่าสุด</span><strong id="admin-outstanding">—</strong><small>จาก 100 รายการล่าสุดที่แสดง</small></div><div class="stat"><span>รายการแจ้งชำระรอตรวจ</span><strong id="admin-claim-count">—</strong><small>ตรวจเงินก่อนยืนยัน</small></div><div class="stat"><span>เวลาสอนรอตรวจ</span><strong id="admin-time-count">—</strong><small>ต้องเช็กชื่อครบและมีอัตราที่ยืนยัน</small></div></div></section>
-      <section id="admin-accounts" class="panel new-section"><div class="panel-head"><div><h2>จัดการบัญชีนักเรียนและครู</h2><p class="muted">สร้างบัญชี รีเซ็ตรหัสผ่านชั่วคราว และเปิดหรือปิดสิทธิ์เข้าใช้ระบบ</p></div></div><form data-action="admin-user-create" class="live-form live-form-grid"><label>ชื่อ–นามสกุล<input name="name" required maxlength="120"></label><label>อีเมล<input name="email" type="email" required autocomplete="off"></label><label>ประเภทบัญชี<select name="role"><option value="student">นักเรียน</option><option value="teacher">ครู</option></select></label><button type="submit" class="primary">สร้างบัญชี</button></form><p class="foot">รหัสผ่านชั่วคราวจะแสดงเพียงครั้งเดียว ผู้รับต้องเปลี่ยนรหัสเมื่อเข้าสู่ระบบครั้งแรก</p><label class="admin-search-label" for="admin-user-search">ค้นหาชื่อ รหัส หรืออีเมล<input id="admin-user-search" type="search" autocomplete="off" placeholder="พิมพ์เพื่อค้นหาบัญชี"></label><div class="tablewrap"><table><thead><tr><th>รหัสประจำตัว</th><th>ชื่อ / บัญชี</th><th>ประเภท</th><th>สถานะ</th><th>รหัสชั่วคราว</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-user-rows"></tbody></table></div></section>
+      <section id="admin-staff" class="panel new-section"><div class="panel-head staff-panel-head"><div><h2>ทะเบียนครูผู้สอน</h2><p class="muted">จัดการครูเหมือนทะเบียนพนักงาน ผู้ดูแลเลือกครูประจำคอร์สและตารางสอนได้แม้ครูยังไม่มีบัญชีเข้าใช้ระบบ</p></div><button type="button" class="primary" data-action="staff-add">+ เพิ่มครู</button></div><div class="staff-summary"><span id="staff-total">ครูทั้งหมด — คน</span><span id="staff-pending">รอเปิดบัญชี — คน</span></div><label class="admin-search-label" for="admin-staff-search">ค้นหาชื่อหรือรหัสครู<input id="admin-staff-search" type="search" autocomplete="off" placeholder="ค้นหารายชื่อครู"></label><div class="tablewrap"><table><thead><tr><th>รหัสครู</th><th>ชื่อครู</th><th>การเข้าใช้ระบบ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-staff-rows"></tbody></table></div><p class="foot">การเปิดบัญชีครูต้องใช้อีเมลจริงของครู ระบบจะแสดงรหัสผ่านชั่วคราวเพียงครั้งเดียว</p></section>
+      <section id="admin-accounts" class="panel new-section"><div class="panel-head"><div><h2>จัดการบัญชีนักเรียน</h2><p class="muted">สร้างบัญชี รีเซ็ตรหัสผ่านชั่วคราว และเปิดหรือปิดสิทธิ์เข้าใช้ระบบ</p></div></div><form data-action="admin-user-create" class="live-form live-form-grid"><label>ชื่อ–นามสกุล<input name="name" required maxlength="120"></label><label>อีเมล<input name="email" type="email" required autocomplete="off"></label><input name="role" type="hidden" value="student"><button type="submit" class="primary">สร้างบัญชีนักเรียน</button></form><p class="foot">รหัสผ่านชั่วคราวจะแสดงเพียงครั้งเดียว ผู้รับต้องเปลี่ยนรหัสเมื่อเข้าสู่ระบบครั้งแรก</p><label class="admin-search-label" for="admin-user-search">ค้นหาชื่อ รหัส หรืออีเมล<input id="admin-user-search" type="search" autocomplete="off" placeholder="พิมพ์เพื่อค้นหาบัญชี"></label><div class="tablewrap"><table><thead><tr><th>รหัสประจำตัว</th><th>ชื่อ / บัญชี</th><th>ประเภท</th><th>สถานะ</th><th>รหัสชั่วคราว</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-user-rows"></tbody></table></div></section>
       <section id="admin-finance" class="new-section"><section class="panel"><h2>แจ้งยอดค่าเรียนให้นักเรียน</h2><p class="muted">นักเรียนสมัครเรียนก่อน จากนั้นผู้ดูแลระบุยอดและวันครบกำหนดเอง ระบบจึงแสดงใบแจ้งยอดในบัญชีนักเรียน</p><form data-action="admin-invoice" class="live-form live-form-grid"><label>นักเรียน / คอร์สที่ยังไม่แจ้งยอด<select name="enrollment_id" id="invoice-enrollment" required></select></label><label>ค่าเรียนที่แจ้ง (บาท)<input name="amount" id="invoice-amount" inputmode="decimal" required placeholder="เลือกคอร์สเพื่อดึงราคา"></label><label>วันครบกำหนด<input name="due_date" type="date" required></label><label>รายละเอียด<input name="description" maxlength="250" placeholder="เช่น ค่าเรียนคอร์สคณิตศาสตร์"></label><button type="submit" class="primary">แจ้งยอดให้นักเรียน</button></form><p class="foot">เลขบัญชีรับโอนจะระบุภายหลัง จึงยังไม่แสดงเลขบัญชีในหน้านักเรียน</p></section><div class="grid"><section class="panel"><h2>รายการแจ้งยอด</h2><div class="tablewrap"><table><thead><tr><th>เลขที่ / นักเรียน</th><th>ยอด</th><th>คงเหลือ</th><th>ครบกำหนด</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-invoices"></tbody></table></div></section><section class="panel"><h2>รายการแจ้งชำระรอตรวจ</h2><div class="tablewrap"><table><thead><tr><th>นักเรียน / อ้างอิง</th><th>ยอด</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-claims"></tbody></table></div></section></div><section class="panel"><h2>บันทึกการรับเงินโดยผู้ดูแล</h2><p class="muted">สำหรับเงินที่ตรวจสอบแล้ว กรุณาใช้เลขอ้างอิงที่ตรวจยืนยันได้</p><form data-action="admin-payment" class="live-form live-form-grid"><label>ใบแจ้งยอด<select name="invoice_id" id="payment-invoice" required></select></label><label>จำนวนที่ได้รับ (บาท)<input name="amount" id="payment-amount" inputmode="decimal" required></label><label>วิธีรับเงิน<input name="method" required maxlength="30" placeholder="เช่น bank_transfer"></label><label>เลขอ้างอิง<input name="reference" required maxlength="120"></label><button type="submit" class="primary">บันทึกรับเงิน</button></form></section></section>
       <section id="admin-teaching" class="panel new-section"><h2>ตรวจเวลาสอน</h2><p class="muted">เช็กชื่อครบทุกคนก่อนอนุมัติ ระบบจะใช้อัตราที่คุณยืนยันไว้</p><div class="tablewrap"><table><thead><tr><th>ครู / คอร์ส</th><th>เวลาสอนจริง</th><th>พัก</th><th>เข้าเรียน</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-times"></tbody></table></div></section>
       <section id="admin-rates" class="panel new-section"><h2>อัตราค่าจ้างครู</h2><p class="muted">อัตรากลางที่ยืนยันแล้วใช้คำนวณค่าจ้างทุกวิชาและทุกครูตามระดับชั้นกับจำนวนผู้เรียน 1–3, 4–6, 7–9 และ 10–13 คน หากมีข้อตกลงเฉพาะครูหรือวิชา ให้เพิ่มอัตราเฉพาะพร้อมแหล่งอ้างอิง</p><div class="tablewrap"><table><thead><tr><th>ขอบเขต / วิชา / ระดับ</th><th>ผู้เรียน</th><th>บาทต่อชั่วโมง</th><th>สถานะ</th><th>ที่มา / ข้อสังเกต</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-rates-rows"></tbody></table></div><details class="rate-create"><summary>เพิ่มอัตราค่าจ้างที่ตรวจสอบแล้ว</summary><form data-action="admin-rate-create" class="live-form live-form-grid"><label>ขอบเขต<select name="scope" id="rate-scope" required><option value="global">อัตรากลางทุกครู</option><option value="teacher">เฉพาะครู</option></select></label><label id="rate-teacher-field" hidden>ครู<select name="teacher_id" id="rate-teacher"></select></label><label id="rate-subject-field" hidden>วิชา<select name="subject" id="rate-subject" required><option value="all">ทุกวิชา</option><option value="science">วิทยาศาสตร์</option><option value="math">คณิตศาสตร์</option><option value="physics">ฟิสิกส์</option><option value="chemistry">เคมี</option><option value="biology">ชีววิทยา</option><option value="chemistry_biology">เคมี/ชีววิทยา</option><option value="english">อังกฤษ</option><option value="thai">ไทย</option><option value="social">สังคม</option><option value="other">อื่น ๆ</option></select></label><label>ระดับ<select name="level"><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>จำนวนนักเรียนต่ำสุด<input name="min_students" type="number" min="1" max="100" required></label><label>จำนวนนักเรียนสูงสุด<input name="max_students" type="number" min="1" max="100" required></label><label>บาทต่อชั่วโมง<input name="rate" inputmode="decimal" required></label><label>เริ่มใช้<input name="effective_from" type="date" required></label><label>สิ้นสุด (ถ้ามี)<input name="effective_to" type="date"></label><label class="wide-field">ที่มา/หลักฐานของอัตรา<input name="source_note" required maxlength="250" placeholder="เช่น แถวในชีตอัตราค่าจ้าง หรือข้อตกลงที่ยืนยันแล้ว"></label><button type="submit" class="primary">บันทึกอัตราที่ยืนยันแล้ว</button></form></details></section>
       <section id="admin-classroom" class="new-section"><section class="panel"><div class="panel-head"><div><h2>จัดห้องเรียนและตารางเรียน</h2><p class="muted">ผู้ดูแลเป็นผู้กำหนดห้อง ครู วันเวลา และรายชื่อนักเรียนทุกคน ไม่มีการจัดเข้าห้องอัตโนมัติ</p></div></div><form data-action="admin-class-create" class="live-form live-form-grid"><label>คอร์ส / รหัสวิชา<select name="course_id" id="class-course" required></select></label><label>ครูผู้สอน<select name="teacher_id" id="class-teacher" required></select></label><label>ห้องเรียน<input name="room_name" required maxlength="80" placeholder="เช่น ห้อง A / ออนไลน์ 1"></label><label>เริ่มเรียน (เวลาไทย)<input name="starts_at" type="datetime-local" required></label><label>เลิกเรียน (เวลาไทย)<input name="ends_at" type="datetime-local" required></label><fieldset class="class-roster-field wide-field"><legend>เลือกรายชื่อนักเรียนในห้อง</legend><p class="foot">แสดงเฉพาะผู้สมัครคอร์สที่เลือก กรุณาตรวจชื่อก่อนบันทึก</p><div id="admin-class-students" class="class-student-picker"></div></fieldset><button type="submit" class="primary">สร้างห้องเรียนตามที่จัด</button></form></section><section class="panel"><h2>ห้องเรียนทั้งหมด</h2><p class="muted">เปิดรายชื่อเพื่อดูผู้เรียน เปลี่ยนห้อง เวลา ครู หรือจัดรายชื่อใหม่ได้ก่อนคาบเริ่มและตามเงื่อนไขของระบบ</p><div class="tablewrap"><table><thead><tr><th>คอร์ส / รหัสวิชา</th><th>ห้อง</th><th>วันและเวลา</th><th>ครูผู้สอน</th><th>รายชื่อที่จัด</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-classes-rows"></tbody></table></div></section></section>
       <section id="admin-enrollments" class="panel new-section"><h2>จัดการการสมัครเรียน</h2><p class="muted">ผู้ดูแลเพิ่ม ยกเลิก หรือคืนสถานะการสมัครเรียนได้ การสมัครเรียนไม่จัดเข้าห้องโดยอัตโนมัติ</p><form data-action="admin-enrollment-create" class="live-form live-form-grid"><label>คอร์ส<select name="course_id" id="admin-enroll-course" required></select></label><label>นักเรียน<select name="student_id" id="admin-enroll-student" required></select></label><button type="submit" class="primary">เพิ่มนักเรียนในคอร์ส</button></form><div class="tablewrap"><table><thead><tr><th>รหัสนักเรียน / ชื่อ</th><th>คอร์ส / รหัสวิชา</th><th>สถานะ</th><th>สมัครเมื่อ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-enrollment-rows"></tbody></table></div></section>
-      <section id="admin-management" class="new-section"><section class="panel"><h2>สร้างคอร์สตามรายวิชาของร้าน</h2><p class="muted">มัธยมต้น: วิทยาศาสตร์ คณิตศาสตร์ ภาษาอังกฤษ · 3,500 บาททุกวิชา<br>มัธยมปลาย: ฟิสิกส์ เคมี ชีวะ คณิตศาสตร์ ภาษาอังกฤษ · 4,500 บาททุกวิชา รหัสคอร์สสร้างโดยระบบและไม่ซ้ำกัน</p><form data-action="admin-course" class="live-form live-form-grid"><label>ระดับ<select name="level" id="course-level" required><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>รายวิชา<select name="subject" id="course-subject" required></select></label><label>ราคาอ้างอิง<input id="course-fixed-price" value="3,500 บาท" readonly aria-label="ราคาคอร์สตามระดับชั้น"></label><label>จำนวนนักเรียนสูงสุด<input name="capacity" type="number" min="1" max="100" required></label><label>ครูประจำคอร์ส<select name="teacher_id" id="course-teacher" required></select></label><button type="submit" class="primary">สร้างคอร์สและรหัสวิชา</button></form><p class="foot">ผู้ดูแลยังเป็นผู้ตรวจและออกใบแจ้งยอดให้นักเรียนหลังสมัครเรียน</p></section><section class="panel"><h2>คอร์สทั้งหมด</h2><div class="tablewrap"><table><thead><tr><th>รหัสคอร์ส</th><th>วิชา / ระดับ</th><th>ราคา</th><th>ครูประจำ</th><th>จำนวนที่สมัคร</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-course-rows"></tbody></table></div></section></section>
+      <section id="admin-management" class="new-section"><section class="panel"><h2>สร้างคอร์สตามรายวิชาของร้าน</h2><p class="muted">มัธยมต้น: วิทยาศาสตร์ คณิตศาสตร์ ภาษาอังกฤษ · มัธยมปลาย: ฟิสิกส์ เคมี ชีวะ คณิตศาสตร์ ภาษาอังกฤษ ผู้ดูแลกำหนดราคาคอร์สได้เอง และระบบสร้างรหัสคอร์สไม่ซ้ำกัน</p><form data-action="admin-course" class="live-form live-form-grid"><label>ระดับ<select name="level" id="course-level" required><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>รายวิชา<select name="subject" id="course-subject" required></select></label><label>ราคาคอร์ส (บาท)<input id="course-price" name="price" inputmode="decimal" required maxlength="12" aria-describedby="course-price-hint"></label><label>จำนวนนักเรียนสูงสุด<input name="capacity" type="number" min="1" max="100" required></label><label>ครูประจำคอร์ส<select name="teacher_id" id="course-teacher" required></select></label><button type="submit" class="primary">สร้างคอร์สและรหัสวิชา</button></form><p class="foot" id="course-price-hint">ราคาเริ่มต้นเป็นเพียงตัวอย่าง ผู้ดูแลแก้ไขได้ และเป็นราคาแสดงในหน้าสมัครเรียน ใบแจ้งยอดจริงยังให้ผู้ดูแลตรวจและออกภายหลัง</p></section><section class="panel"><h2>คอร์สทั้งหมด</h2><div class="tablewrap"><table><thead><tr><th>รหัสคอร์ส</th><th>วิชา / ระดับ</th><th>ราคา</th><th>ครูประจำ</th><th>จำนวนที่สมัคร</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-course-rows"></tbody></table></div></section></section>
       <section id="admin-payroll" class="panel new-section"><h2>งวดจ่ายค่าจ้างครู</h2><p class="muted">สร้างงวดจากเวลาสอนที่อนุมัติแล้ว จากนั้นตรวจยอด ปิดงวด และบันทึกเลขอ้างอิงการจ่าย</p><form data-action="admin-payroll-create" class="live-form live-form-grid"><label>ครู<select name="teacher_id" id="payroll-teacher" required></select></label><label>เดือนงวด<input name="period" type="month" required></label><button type="submit" class="primary">สร้างงวดร่าง</button></form><div class="tablewrap"><table><thead><tr><th>ครู / งวด</th><th>ยอด</th><th>สถานะ</th><th>จ่ายเมื่อ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-payroll-rows"></tbody></table></div></section>
       <section id="admin-reports" class="panel new-section"><h2>ส่งออกข้อมูลสำหรับ Google Sheets</h2><p class="muted">เลือกชุดข้อมูลเพื่อดาวน์โหลด CSV แล้วนำเข้าใน Google Sheets ของร้าน ข้อมูลต้นฉบับอยู่ในฐานข้อมูลของระบบ</p><div class="report-controls"><label for="report-kind">ชุดข้อมูล</label><select id="report-kind"><option value="students">นักเรียนและข้อมูลผู้ปกครอง</option><option value="teachers">ครู</option><option value="courses">คอร์สเรียน</option><option value="classes">ห้องเรียนและตารางสอน</option><option value="class_rosters">รายชื่อในห้องและการเข้าเรียน</option><option value="enrollments">การสมัครเรียน</option><option value="invoices">ใบแจ้งยอด</option><option value="payments">การรับเงิน</option><option value="claims">รายการแจ้งชำระ</option><option value="teaching">เวลาสอน</option><option value="payroll">งวดค่าจ้าง</option><option value="rates">อัตราค่าจ้าง</option></select><button type="button" class="primary" data-action="export-report">ดาวน์โหลด CSV</button></div><p class="foot">ไฟล์นักเรียนมีข้อมูลผู้ปกครอง กรุณาเก็บใน Google Sheet ที่จำกัดสิทธิ์เฉพาะผู้ดูแล</p></section>`;
   }
@@ -432,7 +433,7 @@
     const select = $('course-subject');
     select.replaceChildren();
     for (const [code, label] of courseSubjects[level] || []) option(select, code, label);
-    $('course-fixed-price').value = level === 'high' ? '4,500 บาท' : '3,500 บาท';
+    $('course-price').placeholder = level === 'high' ? 'เช่น 4500' : 'เช่น 3500';
   }
 
   function eligibleStudents(courseId) {
@@ -490,21 +491,44 @@
     const notifications = state.data.notifications || {};
     const notificationCounts = notifications.counts || {};
     const failedNotices = notifications.failed || [];
+    const teachers = users.filter((person) => person.role === 'teacher');
+    const staffBody = $('admin-staff-rows');
+    $('staff-total').textContent = `ครูทั้งหมด ${teachers.length} คน`;
+    $('staff-pending').textContent = `รอเปิดบัญชี ${teachers.filter((person) => person.roster_pending).length} คน`;
+    if (!teachers.length) emptyRow(staffBody, 4, 'ยังไม่มีครูผู้สอน');
+    for (const person of teachers) {
+      const row = element('tr');
+      cell(row, person.teacher_code || '—', 'record-code');
+      const identity = cell(row, person.name);
+      if (person.email) identity.append(element('div', 'muted', person.email));
+      cell(row, person.roster_pending ? 'รอเปิดบัญชี' : person.status === 'active' ? 'เข้าใช้ระบบได้' : 'ปิดบัญชี');
+      const actions = cell(row, ''); actions.className = 'row-actions';
+      actions.append(actionButton('แก้ชื่อ', 'edit-user', person.id));
+      if (person.roster_pending) actions.append(actionButton('เปิดบัญชีครู', 'staff-activate', person.id, 'primary'));
+      else {
+        actions.append(actionButton('รีเซ็ตรหัส', 'reset-user', person.id));
+        actions.append(actionButton(person.status === 'active' ? 'ปิดบัญชี' : 'เปิดบัญชี', person.status === 'active' ? 'disable-user' : 'enable-user', person.id));
+      }
+      staffBody.append(row);
+    }
+    $('admin-staff-search').addEventListener('input', (event) => {
+      const query = event.currentTarget.value.trim().toLocaleLowerCase('th');
+      for (const row of staffBody.rows) row.hidden = Boolean(query) && !row.textContent.toLocaleLowerCase('th').includes(query);
+    });
+    const studentUsers = users.filter((person) => person.role === 'student');
     const userBody = $('admin-user-rows');
-    if (!users.length) emptyRow(userBody, 6, 'ยังไม่มีบัญชีผู้ใช้');
-    for (const person of users) {
+    if (!studentUsers.length) emptyRow(userBody, 6, 'ยังไม่มีบัญชีนักเรียน');
+    for (const person of studentUsers) {
       const row = element('tr');
       cell(row, personalCode(person), 'record-code');
       const identity = cell(row, person.name); identity.append(element('div', 'muted', person.email || person.username || '—'));
       cell(row, roleNames[person.role] || person.role); cell(row, person.status === 'active' ? 'ใช้งาน' : 'ปิดใช้งาน');
       cell(row, person.must_change_password ? 'ต้องเปลี่ยนเมื่อเข้าสู่ระบบ' : 'เปลี่ยนแล้ว');
       const actions = cell(row, ''); actions.className = 'row-actions';
-      if (person.role === 'student') actions.append(actionButton('ข้อมูลนักเรียน', 'admin-profile', person.id));
-      if (person.role !== 'admin') {
-        actions.append(actionButton('แก้ชื่อ/อีเมล', 'edit-user', person.id));
-        actions.append(actionButton('รีเซ็ตรหัส', 'reset-user', person.id));
-        actions.append(actionButton(person.status === 'active' ? 'ปิดบัญชี' : 'เปิดบัญชี', person.status === 'active' ? 'disable-user' : 'enable-user', person.id));
-      }
+      actions.append(actionButton('ข้อมูลนักเรียน', 'admin-profile', person.id));
+      actions.append(actionButton('แก้ชื่อ/อีเมล', 'edit-user', person.id));
+      actions.append(actionButton('รีเซ็ตรหัส', 'reset-user', person.id));
+      actions.append(actionButton(person.status === 'active' ? 'ปิดบัญชี' : 'เปิดบัญชี', person.status === 'active' ? 'disable-user' : 'enable-user', person.id));
       userBody.append(row);
     }
     $('admin-user-search').addEventListener('input', (event) => {
@@ -617,10 +641,10 @@
       if (rule.state === 'confirmed' && !rule.effective_to) actions.append(actionButton('กำหนดวันสิ้นสุด', 'end-rate', rule.id));
       rateBody.append(row);
     }
-    const teachers = users.filter((person) => person.role === 'teacher' && person.status === 'active');
+    const assignableTeachers = teachers.filter((person) => person.status === 'active' || person.roster_pending);
     for (const id of ['course-teacher', 'class-teacher', 'payroll-teacher', 'rate-teacher']) {
       const select = $(id); option(select, '', 'เลือกครู');
-      for (const teacher of teachers) option(select, teacher.id, `${teacher.teacher_code || '—'} · ${teacher.name}`);
+      for (const teacher of assignableTeachers) option(select, teacher.id, `${teacher.teacher_code || '—'} · ${teacher.name}${teacher.roster_pending ? ' · รอเปิดบัญชี' : ''}`);
     }
     const rateScope = $('rate-scope');
     const syncRateScope = () => {
@@ -726,7 +750,7 @@
           await load(); showCredential(created); message = 'สร้างบัญชีแล้ว'; break;
         }
         case 'admin-course':
-          await api('/api/admin/courses', 'POST', { subject: values.subject, level: values.level, teacher_id: validId(values.teacher_id), capacity: Number(values.capacity) });
+          await api('/api/admin/courses', 'POST', { subject: values.subject, level: values.level, price_satang: toSatang(values.price), teacher_id: validId(values.teacher_id), capacity: Number(values.capacity) });
           message = 'สร้างคอร์สและรหัสวิชาแล้ว'; break;
         case 'admin-class-create':
           await api('/api/admin/classes', 'POST', {
@@ -782,6 +806,17 @@
       $('teacher-time').scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
+    if (action === 'staff-add') {
+      await task(button, async () => {
+        const answer = await fieldsDialog('เพิ่มครูผู้สอน', [
+          { name: 'name', label: 'ชื่อครู', type: 'text', required: true, maxLength: 120 }
+        ], 'เพิ่มครู', 'ระบบสร้างรหัสครูให้โดยอัตโนมัติ ครูยังเข้าใช้งานไม่ได้จนกว่าผู้ดูแลจะระบุอีเมลจริงและเปิดบัญชี');
+        if (!answer) return;
+        await api('/api/admin/staff', 'POST', { name: answer.name.trim() });
+        await load(); feedback('เพิ่มครูในทะเบียนแล้ว');
+      });
+      return;
+    }
     await task(button, async () => {
       const id = validId(button.dataset.id);
       let message = 'บันทึกข้อมูลแล้ว';
@@ -818,28 +853,39 @@
         case 'edit-user': {
           const person = (state.data.users || []).find((item) => item.id === id);
           if (!person || person.role === 'admin') throw new Error('ไม่พบบัญชีที่แก้ไขได้');
-          const answer = await fieldsDialog(`แก้ไขบัญชี ${personalCode(person)}`, [
-            { name: 'name', label: 'ชื่อ–นามสกุล', type: 'text', required: true, maxLength: 120, value: person.name },
-            { name: 'email', label: 'อีเมล', type: 'email', required: true, maxLength: 254, value: person.email }
-          ], 'บันทึกบัญชี', 'รหัสประจำตัวจะคงเดิม การเปลี่ยนอีเมลมีผลต่อการแจ้งเตือนในครั้งถัดไป');
+          const fields = [{ name: 'name', label: 'ชื่อ–นามสกุล', type: 'text', required: true, maxLength: 120, value: person.name }];
+          if (!person.roster_pending) fields.push({ name: 'email', label: 'อีเมล', type: 'email', required: true, maxLength: 254, value: person.email });
+          const answer = await fieldsDialog(`แก้ไขบัญชี ${personalCode(person)}`, fields,
+            'บันทึกบัญชี', person.roster_pending ? 'เปิดบัญชีครูจากปุ่มในทะเบียนเมื่อมีอีเมลจริง' : 'รหัสประจำตัวจะคงเดิม การเปลี่ยนอีเมลมีผลต่อการแจ้งเตือนในครั้งถัดไป');
           if (!answer) return;
-          await api(`/api/admin/users/${id}`, 'PUT', { name: answer.name.trim(), email: answer.email.trim() });
-          message = 'แก้ไขชื่อและอีเมลแล้ว'; break;
+          await api(`/api/admin/users/${id}`, 'PUT', person.roster_pending ? { name: answer.name.trim() } : { name: answer.name.trim(), email: answer.email.trim() });
+          message = 'แก้ไขข้อมูลครูหรือนักเรียนแล้ว'; break;
+        }
+        case 'staff-activate': {
+          const person = (state.data.users || []).find((item) => item.id === id && item.role === 'teacher' && item.roster_pending);
+          if (!person) throw new Error('ไม่พบครูที่รอเปิดบัญชี');
+          const answer = await fieldsDialog(`เปิดบัญชี ${person.name}`, [
+            { name: 'email', label: 'อีเมลจริงของครู', type: 'email', required: true, maxLength: 254 }
+          ], 'เปิดบัญชีครู', 'ระบบจะสร้างรหัสผ่านชั่วคราวให้แสดงครั้งเดียวและบังคับครูเปลี่ยนรหัสเมื่อเข้าสู่ระบบ');
+          if (!answer) return;
+          const created = await api(`/api/admin/staff/${id}/activate`, 'POST', { email: answer.email.trim() });
+          await load(); showCredential(created); feedback('เปิดบัญชีครูแล้ว'); return;
         }
         case 'course-edit': {
           const course = (state.academic?.courses || []).find((item) => item.id === id);
           if (!course) throw new Error('ไม่พบคอร์ส');
           const teacherOptions = (state.data.users || [])
-            .filter((person) => person.role === 'teacher' && (person.status === 'active' || person.id === course.teacher_id))
-            .map((person) => [person.id, `${person.teacher_code || '—'} · ${person.name}`]);
+            .filter((person) => person.role === 'teacher' && (person.status === 'active' || person.roster_pending || person.id === course.teacher_id))
+            .map((person) => [person.id, `${person.teacher_code || '—'} · ${person.name}${person.login_enabled ? '' : ' · ยังไม่เปิดบัญชี'}`]);
           const answer = await fieldsDialog(`แก้ไขคอร์ส ${course.course_code}`, [
+            { name: 'price', label: 'ราคาคอร์ส (บาท)', type: 'text', required: true, maxLength: 12, value: (Number(course.price_satang) / 100).toFixed(2) },
             { name: 'teacher_id', label: 'ครูประจำคอร์ส', type: 'select', required: true, value: course.teacher_id, options: teacherOptions },
             { name: 'capacity', label: 'จำนวนนักเรียนสูงสุด', type: 'number', required: true, value: course.capacity },
             { name: 'active', label: 'สถานะเปิดรับ', type: 'select', required: true, value: course.active ? 'true' : 'false', options: [['true', 'เปิดรับสมัคร'], ['false', 'ปิดรับสมัคร']] }
-          ], 'บันทึกคอร์ส', 'รายวิชา ระดับ ราคา และรหัสคอร์สเป็นข้อมูลคงที่ การเปลี่ยนครูประจำคอร์สไม่แก้คาบที่จัดไว้แล้ว');
+          ], 'บันทึกคอร์ส', 'รายวิชา ระดับ และรหัสคอร์สคงเดิม ราคาใหม่จะแสดงในหน้าสมัครเรียน แต่ใบแจ้งยอดที่ออกแล้วไม่เปลี่ยนตาม');
           if (!answer) return;
           await api(`/api/admin/courses/${id}`, 'PUT', {
-            teacher_id: validId(answer.teacher_id), capacity: Number(answer.capacity), active: answer.active === 'true'
+            price_satang: toSatang(answer.price), teacher_id: validId(answer.teacher_id), capacity: Number(answer.capacity), active: answer.active === 'true'
           });
           message = 'แก้ไขคอร์สแล้ว'; break;
         }
@@ -914,9 +960,9 @@
         }
         case 'confirm-rate': {
           const rule = (state.data.rates || []).find((item) => item.id === id);
-          const teachers = (state.data.staff || []).filter((person) => person.role === 'teacher' && person.status === 'active');
+          const teachers = (state.data.staff || []).filter((person) => person.role === 'teacher' && (person.status === 'active' || person.roster_pending));
           const answer = await fieldsDialog(`ยืนยันอัตรา ${rule?.teacher_label || ''}`, [
-            { name: 'teacher_id', label: 'จับคู่กับบัญชีครู', type: 'select', required: true, options: teachers.map((person) => [person.id, `${person.name} · ${person.email}`]) },
+            { name: 'teacher_id', label: 'จับคู่กับครู', type: 'select', required: true, options: teachers.map((person) => [person.id, `${person.name} · ${person.email || 'รอเปิดบัญชี'}`]) },
             { name: 'effective_from', label: 'วันที่เริ่มใช้', type: 'date', required: true }
           ], 'ยืนยันอัตรานี้');
           if (!answer) return;
@@ -1050,7 +1096,7 @@
     courseInput.value = classroom.course_id;
     const teacherInput = addField('ครูผู้สอน', 'teacher_id', 'select');
     for (const teacher of state.data.users || []) {
-      if (teacher.role === 'teacher' && (teacher.status === 'active' || teacher.id === classroom.teacher_id)) option(teacherInput, teacher.id, `${teacher.teacher_code || '—'} · ${teacher.name}`);
+      if (teacher.role === 'teacher' && (teacher.status === 'active' || teacher.roster_pending || teacher.id === classroom.teacher_id)) option(teacherInput, teacher.id, `${teacher.teacher_code || '—'} · ${teacher.name}`);
     }
     teacherInput.value = classroom.teacher_id;
     const roomInput = addField('ชื่อห้อง', 'room_name', 'text', classroom.room_name); roomInput.maxLength = 80;
@@ -1241,7 +1287,7 @@
   }
 
   async function start() {
-    document.body.innerHTML = '<main class="live-loading"><img src="physics-house-logo-yellow-black.png" alt="Physics House"><p>กำลังตรวจสอบบัญชี…</p></main>';
+    document.body.innerHTML = '<main class="live-loading"><img src="physics-plus-logo-yellow-black.png" alt="Physics Plus"><p>กำลังตรวจสอบบัญชี…</p></main>';
     document.body.classList.add('live-ready');
     try {
       const me = await api('/api/me');

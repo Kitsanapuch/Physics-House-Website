@@ -1,4 +1,4 @@
-"""Physics House Flask entrypoint, auto-detected by Vercel's Python runtime."""
+"""Physics Plus Flask entrypoint, auto-detected by Vercel's Python runtime."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from turso_serverless.protocol import ProtocolError
 
 from backend import MAX_BODY, Response
 from mailer import delivery_configured, send_update_email
-from remote import RemotePhysicsHouseApp
+from remote import RemotePhysicsPlusApp
 
 
 PUBLIC_DIR = Path(__file__).resolve().parent / "public"
@@ -54,11 +54,11 @@ def _public_origins() -> tuple[str, set[str]]:
 
 
 @lru_cache(maxsize=1)
-def _backend() -> RemotePhysicsHouseApp:
+def _backend() -> RemotePhysicsPlusApp:
     database_url = os.getenv("TURSO_DATABASE_URL", "").strip()
     token = os.getenv("TURSO_AUTH_TOKEN", "").strip()
     origin, extra = _public_origins()
-    return RemotePhysicsHouseApp(database_url, token, origin, extra)
+    return RemotePhysicsPlusApp(database_url, token, origin, extra)
 
 
 def _client_ip() -> str:
@@ -187,7 +187,7 @@ def public_asset(asset: str):
         return response
     if asset not in {
         "index.html", "live.js", "live.css", "portal.css",
-        "design.css", "physics-hero-gold.png", "physics-house-logo-yellow-black.png",
+        "design.css", "physics-hero-gold.png", "physics-plus-logo-yellow-black.png",
     }:
         return _error(404, "not_found", "Page not found")
     response = make_response(send_from_directory(PUBLIC_DIR, asset))

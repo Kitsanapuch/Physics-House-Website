@@ -1,6 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "flask",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "physicshouse.vercel.app" }],
+      "destination": "https://physicsplus.vercel.app/:path*",
+      "permanent": true
+    }
+  ],
   "crons": [
     { "path": "/api/cron/notifications", "schedule": "0 3 * * *" }
   ],

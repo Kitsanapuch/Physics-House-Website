@@ -33,7 +33,7 @@ class MarketplaceLibsqlTests(unittest.TestCase):
         connection_patch = patch.object(remote.libsql, "connect", local_transport)
         connection_patch.start()
         self.addCleanup(connection_patch.stop)
-        self.owner = remote.RemotePhysicsHouseApp(
+        self.owner = remote.RemotePhysicsPlusApp(
             "libsql://test.example", "synthetic-test-token", "https://school.example"
         )
         self.owner.initialize_remote()
@@ -47,16 +47,16 @@ class MarketplaceLibsqlTests(unittest.TestCase):
         self.assertTrue(status["default_rate_grid_matches"])
         self.assertEqual(status["confirmed_default_rate_count"], 8)
 
-        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
         with self.owner.connect() as conn:
             row = conn.execute("SELECT id,username FROM users WHERE role='admin'").fetchone()
-            self.assertEqual(row["username"], "physicshouse")
-            self.assertEqual(row["USERNAME"], "physicshouse")
-            self.assertEqual(row[1], "physicshouse")
-            self.assertEqual(dict(row), {"id": row[0], "username": "physicshouse"})
+            self.assertEqual(row["username"], "physicsplus")
+            self.assertEqual(row["USERNAME"], "physicsplus")
+            self.assertEqual(row[1], "physicsplus")
+            self.assertEqual(dict(row), {"id": row[0], "username": "physicsplus"})
             self.assertEqual([item["username"] for item in conn.execute(
                 "SELECT username FROM users WHERE role='admin'"
-            )], ["physicshouse"])
+            )], ["physicsplus"])
 
         with self.assertRaises(RuntimeError):
             with self.owner.connect() as conn:
@@ -81,13 +81,13 @@ class MarketplaceLibsqlTests(unittest.TestCase):
                 conn.executescript("CREATE TABLE IF NOT EXISTS script_probe(x); INVALID SQL;")
 
     def test_http_login_and_registration_use_libsql_rows(self) -> None:
-        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
         with patch.object(site, "_backend", return_value=self.owner):
             admin = site.app.test_client()
             login = admin.post(
                 "/api/auth/login", base_url="https://school.example",
                 headers={"Origin": "https://school.example"},
-                json={"login": "physicshouse", "password": "SafeTestPassword123!"},
+                json={"login": "physicsplus", "password": "SafeTestPassword123!"},
             )
             self.assertEqual(login.status_code, 200, login.json)
             self.assertEqual(login.json["user"]["role"], "admin")
@@ -112,7 +112,7 @@ class MarketplaceLibsqlTests(unittest.TestCase):
             ).json["user"]["role"], "student")
 
     def test_readiness_requires_active_admin_and_exact_rate_grid(self) -> None:
-        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
         self.assertEqual(self.owner.check_remote()["active_admin_count"], 1)
         with self.owner.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -147,7 +147,7 @@ class MarketplaceLibsqlTests(unittest.TestCase):
             "libsql://test.example?authToken=secret", "file:local.db",
         ):
             with self.subTest(url=url), self.assertRaises(ValueError):
-                remote.RemotePhysicsHouseApp(url, "synthetic-test-token", "https://school.example")
+                remote.RemotePhysicsPlusApp(url, "synthetic-test-token", "https://school.example")
 
 
 if __name__ == "__main__":

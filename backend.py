@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Physics House domain API and SQLite-compatible query layer.
+"""Physics Plus domain API and SQLite-compatible query layer.
 
-The Vercel package subclasses PhysicsHouseApp with a remote Turso connection.
+The Vercel package subclasses PhysicsPlusApp with a remote Turso connection.
 This module contains no HTTP server entrypoint and stores no credentials.
 """
 
@@ -37,15 +37,41 @@ MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 GRADES = {f"M{grade}" for grade in range(1, 7)}
 GUARDIAN_RELATIONSHIPS = {"father", "mother", "guardian", "other"}
 COURSE_CATALOG = {
-    ("middle", "science"): ("M-SCI", "วิทยาศาสตร์", 350_000),
-    ("middle", "math"): ("M-MAT", "คณิตศาสตร์", 350_000),
-    ("middle", "english"): ("M-ENG", "ภาษาอังกฤษ", 350_000),
-    ("high", "physics"): ("H-PHY", "ฟิสิกส์", 450_000),
-    ("high", "chemistry"): ("H-CHE", "เคมี", 450_000),
-    ("high", "biology"): ("H-BIO", "ชีววิทยา", 450_000),
-    ("high", "math"): ("H-MAT", "คณิตศาสตร์", 450_000),
-    ("high", "english"): ("H-ENG", "ภาษาอังกฤษ", 450_000),
+    ("middle", "science"): ("M-SCI", "วิทยาศาสตร์"),
+    ("middle", "math"): ("M-MAT", "คณิตศาสตร์"),
+    ("middle", "english"): ("M-ENG", "ภาษาอังกฤษ"),
+    ("high", "physics"): ("H-PHY", "ฟิสิกส์"),
+    ("high", "chemistry"): ("H-CHE", "เคมี"),
+    ("high", "biology"): ("H-BIO", "ชีววิทยา"),
+    ("high", "math"): ("H-MAT", "คณิตศาสตร์"),
+    ("high", "english"): ("H-ENG", "ภาษาอังกฤษ"),
 }
+INTERNAL_STAFF_DOMAIN = "physics-plus.invalid"
+TEACHER_ROSTER_MIGRATION = "teacher_roster_2026_10_21"
+BRAND_CODES_MIGRATION = "physics_plus_codes_2026_10_21"
+INITIAL_TEACHERS = ("ครูตุ้ม", "ครูโรจน์", "ครูโจ้")
+
+
+def pending_teacher_email(user_id: str) -> str:
+    """Internal, undeliverable key for a roster entry without login credentials."""
+    return f"staff-{user_id}@{INTERNAL_STAFF_DOMAIN}"
+
+
+def is_pending_teacher(row: sqlite3.Row | dict) -> bool:
+    email = row["email"]
+    return bool(row["role"] == "teacher" and isinstance(email, str)
+                and email == pending_teacher_email(row["id"]))
+
+
+def public_email(row: sqlite3.Row | dict) -> str | None:
+    return None if is_pending_teacher(row) else row["email"]
+
+
+def eligible_teacher(conn: sqlite3.Connection, teacher_id: str) -> bool:
+    """Only active teachers and intentionally pending roster records can be assigned."""
+    teacher = conn.execute("SELECT id,email,role,status FROM users WHERE id=?", (teacher_id,)).fetchone()
+    return bool(teacher and teacher["role"] == "teacher" and
+                (teacher["status"] == "active" or is_pending_teacher(teacher)))
 
 
 class ApiError(Exception):
@@ -107,7 +133,7 @@ def normalize_email(value: str) -> str:
         fail(400, "invalid_email", "Enter a valid email address")
     if local.startswith(".") or local.endswith(".") or ".." in local:
         fail(400, "invalid_email", "Enter a valid email address")
-    if len(labels) < 2 or any(not EMAIL_DOMAIN_LABEL_RE.fullmatch(label) for label in labels) or len(labels[-1]) < 2:
+    if len(labels) < 2 or any(not EMAIL_DOMAIN_LABEL_RE.fullmatch(label) for label in labels) or len(labels[-1]) < 2 or labels[-1].casefold() == "invalid":
         fail(400, "invalid_email", "Enter a valid email address")
     return value.casefold()
 
@@ -192,7 +218,7 @@ def date_in_bangkok(epoch: int) -> str:
 
 def user_json(row: sqlite3.Row) -> dict:
     code = row["public_code"]
-    return {"id": row["id"], "email": row["email"], "username": row["username"], "name": row["name"], "role": row["role"], "status": row["status"], "must_change_password": bool(row["must_change_password"]), "student_code": code if row["role"] == "student" else None, "teacher_code": code if row["role"] == "teacher" else None}
+    return {"id": row["id"], "email": public_email(row), "username": row["username"], "name": row["name"], "role": row["role"], "status": row["status"], "must_change_password": bool(row["must_change_password"]), "student_code": code if row["role"] == "student" else None, "teacher_code": code if row["role"] == "teacher" else None}
 
 
 SCHEMA = """
@@ -373,7 +399,7 @@ def next_public_code(conn: sqlite3.Connection, prefix: str) -> str:
     conn.execute("INSERT OR IGNORE INTO code_counters(prefix,next_number) VALUES(?,1)", (prefix,))
     number = conn.execute("SELECT next_number FROM code_counters WHERE prefix=?", (prefix,)).fetchone()[0]
     conn.execute("UPDATE code_counters SET next_number=? WHERE prefix=?", (number + 1, prefix))
-    return f"PH-{prefix}-{number:06d}"
+    return f"PP-{prefix}-{number:06d}"
 
 
 def migrate_academic_schema(conn: sqlite3.Connection) -> None:
@@ -402,18 +428,51 @@ def migrate_academic_schema(conn: sqlite3.Connection) -> None:
                          (next_public_code(conn, subject_code), subject_code, row["id"]))
         elif row["subject_code"] is None:
             conn.execute("UPDATE courses SET subject_code=? WHERE id=?", (subject_code, row["id"]))
-        if row["active"] and (catalog is None or row["price_satang"] != catalog[2]):
+        if row["active"] and catalog is None:
             # Preserve historical enrollment/invoice values, but do not advertise
-            # an obsolete offer as part of the newly fixed eight-offering catalog.
+            # a subject that the shop no longer offers.
             conn.execute("UPDATE courses SET active=0 WHERE id=?", (row["id"],))
             conn.execute("INSERT INTO audit_events(id,actor_id,entity,entity_id,action,details,created_at) VALUES(?,NULL,'course',?,'deactivate_legacy_offer',?,?)",
-                         (uid(), row["id"], json.dumps({"reason": "catalog_or_reference_price_mismatch"}, separators=(",", ":")), now()))
+                         (uid(), row["id"], json.dumps({"reason": "subject_not_offered"}, separators=(",", ":")), now()))
     conn.execute("UPDATE class_sessions SET teacher_id=(SELECT teacher_id FROM courses WHERE id=course_id) WHERE teacher_id IS NULL")
     conn.execute("UPDATE class_sessions SET room_name='ยังไม่ระบุ' WHERE room_name IS NULL OR trim(room_name)=''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_public_code_unique ON users(public_code)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS courses_course_code_unique ON courses(course_code)")
     conn.execute("CREATE INDEX IF NOT EXISTS class_sessions_teacher_time ON class_sessions(teacher_id,starts_at,ends_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS class_sessions_room_time ON class_sessions(room_name,starts_at,ends_at)")
+    conn.commit()
+
+
+def seed_initial_teachers(conn: sqlite3.Connection) -> None:
+    """Add the owner's first three staff records once, without inventing login emails."""
+    conn.execute("BEGIN IMMEDIATE")
+    if not conn.execute("SELECT 1 FROM app_migrations WHERE key=?", (TEACHER_ROSTER_MIGRATION,)).fetchone():
+        for name in INITIAL_TEACHERS:
+            exists = conn.execute("SELECT 1 FROM users WHERE role='teacher' AND name=? LIMIT 1", (name,)).fetchone()
+            if exists:
+                continue
+            teacher_id = uid()
+            conn.execute(
+                "INSERT INTO users(id,email,public_code,name,password_hash,role,status,must_change_password,created_at) "
+                "VALUES(?,?,?,?,?,'teacher','disabled',1,?)",
+                (teacher_id, pending_teacher_email(teacher_id), next_public_code(conn, "T"), name,
+                 hash_password(secrets.token_urlsafe(32)), now()),
+            )
+            conn.execute("INSERT INTO audit_events(id,actor_id,entity,entity_id,action,details,created_at) "
+                         "VALUES(?,NULL,'user',?,'seed_teacher_roster','{}',?)", (uid(), teacher_id, now()))
+        conn.execute("INSERT INTO app_migrations(key,applied_at) VALUES(?,?)", (TEACHER_ROSTER_MIGRATION, now()))
+    conn.commit()
+
+
+def migrate_brand_codes(conn: sqlite3.Connection) -> None:
+    """Rename visible school identifiers; foreign keys use stable internal IDs."""
+    conn.execute("BEGIN IMMEDIATE")
+    if not conn.execute("SELECT 1 FROM app_migrations WHERE key=?", (BRAND_CODES_MIGRATION,)).fetchone():
+        conn.execute("UPDATE users SET public_code='PP-'||substr(public_code,4) WHERE public_code LIKE 'PH-%'")
+        conn.execute("UPDATE courses SET course_code='PP-'||substr(course_code,4) WHERE course_code LIKE 'PH-%'")
+        # Issued invoice numbers are accounting references. Keep historical
+        # numbers stable so bank transfers and exported records still reconcile.
+        conn.execute("INSERT INTO app_migrations(key,applied_at) VALUES(?,?)", (BRAND_CODES_MIGRATION, now()))
     conn.commit()
 
 
@@ -457,7 +516,7 @@ class ClosingConnection(sqlite3.Connection):
             self.close()
 
 
-class PhysicsHouseApp:
+class PhysicsPlusApp:
     def __init__(self, db_path: Path, origin: str, static_dir: Path | None = None) -> None:
         self.db_path = Path(db_path)
         self.origin = origin.rstrip("/")
@@ -489,6 +548,8 @@ class PhysicsHouseApp:
             conn.executescript(SCHEMA)
             migrate_outbox_schema(conn)
             migrate_academic_schema(conn)
+            migrate_brand_codes(conn)
+            seed_initial_teachers(conn)
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute("SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)).fetchone():
                 # The old, unconfirmed four-row sample is superseded by the owner's
@@ -515,6 +576,10 @@ class PhysicsHouseApp:
         resolved from the environment at dispatch, so missing email setup
         does not silently discard an update.
         """
+        if recipient_user_id:
+            recipient = conn.execute("SELECT id,role,email FROM users WHERE id=?", (recipient_user_id,)).fetchone()
+            if recipient and is_pending_teacher(recipient):
+                return
         current = now()
         conn.execute(
             "INSERT INTO notification_outbox"
@@ -660,7 +725,7 @@ class PhysicsHouseApp:
         cookie = SimpleCookie()
         try:
             cookie.load(cookie_header)
-            token = cookie.get("ph_session")
+            token = cookie.get("pp_session")
         except Exception:
             token = None
         if token is None:
@@ -677,13 +742,13 @@ class PhysicsHouseApp:
         csrf = secrets.token_urlsafe(32)
         conn.execute("DELETE FROM sessions WHERE expires_at<=?", (now(),))
         conn.execute("INSERT INTO sessions VALUES(?,?,?,?,?)", (hashlib.sha256(raw.encode()).hexdigest(), user_id, csrf, now(), now() + SESSION_SECONDS))
-        cookie = f"ph_session={raw}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_SECONDS}"
+        cookie = f"pp_session={raw}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_SECONDS}"
         if self.origin.startswith("https://"):
             cookie += "; Secure"
         return cookie, csrf
 
     def _clear_cookie(self) -> str:
-        cookie = "ph_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+        cookie = "pp_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
         if self.origin.startswith("https://"):
             cookie += "; Secure"
         return cookie
@@ -771,6 +836,22 @@ class PhysicsHouseApp:
 
                 if user is None:
                     fail(401, "unauthenticated", "Sign in first")
+                if path == "/api/admin/maintenance/initialize" and method == "POST":
+                    self._require_role(user, "admin")
+                    csrf = headers.get("x-csrf-token", "")
+                    if not csrf or not hmac.compare_digest(csrf, session["csrf_token"]):
+                        fail(403, "invalid_csrf", "Refresh the page and try again")
+                    current = data.get("current_password")
+                    if not isinstance(current, str) or not verify_password(current, user["password_hash"]):
+                        fail(401, "invalid_credentials", "Current password is incorrect")
+                    initialize = getattr(self, "initialize_remote", None)
+                    if initialize is None:
+                        fail(503, "migration_unavailable", "Remote migration is unavailable")
+                    initialize()
+                    conn.execute("BEGIN IMMEDIATE")
+                    self.audit(conn, user["id"], "system", "database", "initialize_remote")
+                    conn.commit()
+                    return Response(200, {"ok": True, "schema_initialized": True})
                 if method != "GET":
                     csrf = headers.get("x-csrf-token", "")
                     if not csrf or not hmac.compare_digest(csrf, session["csrf_token"]):
@@ -891,6 +972,8 @@ class PhysicsHouseApp:
             return Response(200, {"users": self._admin_users(conn)})
         if method == "GET" and path == "/api/admin/academic":
             return self._admin_academic(conn)
+        if method == "POST" and path == "/api/admin/account":
+            return self._update_admin_account(conn, user, data)
         report_match = re.fullmatch(r"/api/admin/reports/(students|teachers|courses|classes|class_rosters|enrollments|invoices|payments|claims|teaching|payroll|rates)", path)
         if method == "GET" and report_match:
             return self._report(conn, report_match.group(1), query)
@@ -908,7 +991,10 @@ class PhysicsHouseApp:
         if method == "POST" and path == "/api/admin/rates":
             return self._create_rate(conn, user, data)
         if method == "POST" and path == "/api/admin/staff":
-            return self._create_user(conn, user, data, allowed_roles={"teacher"})
+            return self._create_staff(conn, user, data)
+        activate_staff_match = re.fullmatch(r"/api/admin/staff/([0-9a-f]{32})/activate", path)
+        if method == "POST" and activate_staff_match:
+            return self._activate_staff(conn, user, activate_staff_match.group(1), data)
         account_match = re.fullmatch(r"/api/admin/users/([0-9a-f]{32})/(reset-password|disable|enable)", path)
         if method == "POST" and account_match:
             return self._manage_user(conn, user, account_match.group(1), account_match.group(2))
@@ -1150,7 +1236,7 @@ class PhysicsHouseApp:
         if any(ord(character) < 32 or ord(character) == 127 for character in description):
             fail(400, "invalid_input", "Control characters are not allowed")
         invoice_id = uid()
-        invoice_number = "PH-" + datetime.now(BANGKOK).strftime("%Y%m%d") + "-" + invoice_id[:8].upper()
+        invoice_number = "PP-" + datetime.now(BANGKOK).strftime("%Y%m%d") + "-" + invoice_id[:8].upper()
         conn.execute(
             "INSERT INTO invoices(id,invoice_number,enrollment_id,student_id,description,amount_satang,due_date,created_at) "
             "VALUES(?,?,?,?,?,?,?,?)",
@@ -1215,6 +1301,9 @@ class PhysicsHouseApp:
             code = item.pop("public_code")
             item["student_code"] = code if item["role"] == "student" else None
             item["teacher_code"] = code if item["role"] == "teacher" else None
+            item["login_enabled"] = item["status"] == "active"
+            item["roster_pending"] = is_pending_teacher(item)
+            item["email"] = public_email(item)
             result.append(item)
         return result
 
@@ -1268,9 +1357,8 @@ class PhysicsHouseApp:
             "ORDER BY e.created_at DESC,e.id"
         ).fetchall()
         catalog = [{"level": level, "subject": subject, "subject_code": code,
-                    "title": f"{name} {'ม.ต้น' if level == 'middle' else 'ม.ปลาย'}",
-                    "price_satang": price}
-                   for (level, subject), (code, name, price) in COURSE_CATALOG.items()]
+                    "title": f"{name} {'ม.ต้น' if level == 'middle' else 'ม.ปลาย'}"}
+                   for (level, subject), (code, name) in COURSE_CATALOG.items()]
         return Response(200, {"catalog": catalog, "users": self._admin_users(conn),
                               "courses": [dict(row) for row in courses],
                               "classes": self._class_list(conn),
@@ -1281,7 +1369,9 @@ class PhysicsHouseApp:
         invoices = conn.execute("SELECT i.id,i.invoice_number,i.amount_satang,i.status,i.due_date,u.name student_name,COALESCE((SELECT SUM(p.amount_satang) FROM payments p WHERE p.invoice_id=i.id),0) paid_satang FROM invoices i JOIN users u ON u.id=i.student_id ORDER BY i.created_at DESC LIMIT 100").fetchall()
         claims = conn.execute("SELECT pc.id,pc.invoice_id,pc.amount_satang,pc.reference,pc.status,u.name student_name FROM payment_claims pc JOIN users u ON u.id=pc.student_id WHERE pc.status='pending' ORDER BY pc.created_at DESC").fetchall()
         staff = conn.execute("SELECT id,email,name,role,status,must_change_password FROM users WHERE role IN ('teacher','admin') ORDER BY role,name").fetchall()
-        return Response(200, {"pending_time_entries": [dict(r) for r in pending], **self._wage_liability(conn), "invoices": [dict(r) for r in invoices], "pending_payment_claims": [dict(r) for r in claims], "staff": [dict(r) for r in staff], "users": self._admin_users(conn), "notifications": self._notification_status(conn)})
+        staff_rows = [{**dict(r), "email": public_email(r), "login_enabled": r["status"] == "active",
+                       "roster_pending": is_pending_teacher(r)} for r in staff]
+        return Response(200, {"pending_time_entries": [dict(r) for r in pending], **self._wage_liability(conn), "invoices": [dict(r) for r in invoices], "pending_payment_claims": [dict(r) for r in claims], "staff": staff_rows, "users": self._admin_users(conn), "notifications": self._notification_status(conn)})
 
     def _notification_status(self, conn: sqlite3.Connection) -> dict:
         """Administrative delivery state without addresses or message content."""
@@ -1317,7 +1407,12 @@ class PhysicsHouseApp:
             "rates": "SELECT id,teacher_label,subject,level,min_students,max_students,rate_satang_per_hour,effective_from,effective_to,state,source_note FROM rate_rules ORDER BY level,min_students,id",
         }[dataset]
         rows = conn.execute(sql + " LIMIT 1001 OFFSET ?", ((page - 1) * 1000,)).fetchall()
-        return Response(200, {"dataset": dataset, "rows": [dict(row) for row in rows[:1000]], "next_page": page + 1 if len(rows) > 1000 else None})
+        exported = [dict(row) for row in rows[:1000]]
+        if dataset == "teachers":
+            for row in exported:
+                if row["email"] == pending_teacher_email(row["id"]):
+                    row["email"] = None
+        return Response(200, {"dataset": dataset, "rows": exported, "next_page": page + 1 if len(rows) > 1000 else None})
 
     def _create_user(self, conn: sqlite3.Connection, user: sqlite3.Row, data: dict, allowed_roles: set[str]) -> Response:
         role = required_str(data, "role", 10)
@@ -1335,6 +1430,70 @@ class PhysicsHouseApp:
         self.enqueue_notice(conn, event_id, "account_created", staff_id)
         return Response(201, {"user": {"id": staff_id, "email": email, "name": name, "role": role, "student_code": public_code if role == "student" else None, "teacher_code": public_code if role == "teacher" else None}, "temporary_password": temporary_password, "must_change_password": True})
 
+    def _update_admin_account(self, conn: sqlite3.Connection, actor: sqlite3.Row, data: dict) -> Response:
+        if set(data) != {"current_password", "new_username", "new_password"}:
+            fail(400, "invalid_input", "Current password, new username and new password are required")
+        current = data.get("current_password")
+        if not isinstance(current, str) or not verify_password(current, actor["password_hash"]):
+            fail(401, "invalid_credentials", "Current password is incorrect")
+        username = normalize_username(required_str(data, "new_username", 40))
+        password = validate_password(data.get("new_password"))
+        if username == actor["username"] and hmac.compare_digest(current, password):
+            fail(400, "unchanged_account", "Choose a new username or password")
+        if conn.execute("SELECT 1 FROM users WHERE username=? AND id!=?", (username, actor["id"])).fetchone():
+            fail(409, "account_exists", "This username already exists")
+        conn.execute("UPDATE users SET username=?,name=?,password_hash=?,must_change_password=0 WHERE id=?",
+                     (username, "ผู้ดูแล Physics Plus", hash_password(password), actor["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (actor["id"],))
+        self.audit(conn, actor["id"], "user", actor["id"], "update_admin_account",
+                   {"old_username": actor["username"], "new_username": username})
+        return Response(200, {"ok": True, "username": username, "sessions_revoked": True},
+                        {"Set-Cookie": self._clear_cookie()})
+
+    def _create_staff(self, conn: sqlite3.Connection, actor: sqlite3.Row, data: dict) -> Response:
+        if "email" in data:
+            return self._create_user(conn, actor, {**data, "role": "teacher"}, allowed_roles={"teacher"})
+        if set(data) - {"name"}:
+            fail(400, "invalid_input", "A staff roster entry only needs a name")
+        name = required_str(data, "name", 120)
+        if any(ord(c) < 32 or ord(c) == 127 for c in name):
+            fail(400, "invalid_input", "Control characters are not allowed")
+        if conn.execute("SELECT 1 FROM users WHERE role='teacher' AND name=?", (name,)).fetchone():
+            fail(409, "staff_exists", "A teacher with this name already exists")
+        teacher_id = uid()
+        code = next_public_code(conn, "T")
+        conn.execute(
+            "INSERT INTO users(id,email,public_code,name,password_hash,role,status,must_change_password,created_at) "
+            "VALUES(?,?,?,?,?,'teacher','disabled',1,?)",
+            (teacher_id, pending_teacher_email(teacher_id), code, name,
+             hash_password(secrets.token_urlsafe(32)), now()),
+        )
+        self.audit(conn, actor["id"], "user", teacher_id, "create_teacher_roster")
+        return Response(201, {"user": {"id": teacher_id, "name": name, "role": "teacher",
+                                        "teacher_code": code, "email": None, "login_enabled": False}})
+
+    def _activate_staff(self, conn: sqlite3.Connection, actor: sqlite3.Row, teacher_id: str, data: dict) -> Response:
+        if set(data) != {"email"}:
+            fail(400, "invalid_input", "A real email is required to activate the teacher account")
+        teacher = conn.execute("SELECT * FROM users WHERE id=? AND role='teacher'", (teacher_id,)).fetchone()
+        if not teacher:
+            fail(404, "teacher_not_found", "Teacher not found")
+        if not is_pending_teacher(teacher):
+            fail(409, "staff_already_activated", "This teacher already has a login account")
+        email = normalize_email(required_str(data, "email", 254))
+        if conn.execute("SELECT 1 FROM users WHERE email=? AND id!=?", (email, teacher_id)).fetchone():
+            fail(409, "account_exists", "An account with this email already exists")
+        temporary_password = secrets.token_urlsafe(24)
+        conn.execute("UPDATE users SET email=?,password_hash=?,status='active',must_change_password=1 WHERE id=?",
+                     (email, hash_password(temporary_password), teacher_id))
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (teacher_id,))
+        event_id = self.audit(conn, actor["id"], "user", teacher_id, "activate_teacher_account")
+        self.enqueue_notice(conn, event_id, "account_created", teacher_id)
+        return Response(200, {"user": {"id": teacher_id, "name": teacher["name"], "role": "teacher",
+                                       "teacher_code": teacher["public_code"], "email": email,
+                                       "login_enabled": True}, "temporary_password": temporary_password,
+                              "must_change_password": True})
+
     def _edit_user(self, conn: sqlite3.Connection, actor: sqlite3.Row, target_id: str, data: dict) -> Response:
         target = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
         if not target:
@@ -1344,6 +1503,8 @@ class PhysicsHouseApp:
         if not data or set(data) - {"name", "email"}:
             fail(400, "invalid_input", "Only name and email can be updated here")
         name = required_str(data, "name", 120) if "name" in data else target["name"]
+        if is_pending_teacher(target) and "email" in data:
+            fail(409, "staff_activation_required", "Activate this teacher account with a real email")
         email = normalize_email(required_str(data, "email", 254)) if "email" in data else target["email"]
         if any(ord(c) < 32 or ord(c) == 127 for c in name):
             fail(400, "invalid_input", "Control characters are not allowed")
@@ -1353,7 +1514,7 @@ class PhysicsHouseApp:
         event_id = self.audit(conn, actor["id"], "user", target_id, "update_contact")
         if target["status"] == "active":
             self.enqueue_notice(conn, event_id, "account_updated", target_id)
-        return Response(200, {"user_id": target_id, "name": name, "email": email,
+        return Response(200, {"user_id": target_id, "name": name, "email": None if is_pending_teacher(target) else email,
                               "student_code": target["public_code"] if target["role"] == "student" else None,
                               "teacher_code": target["public_code"] if target["role"] == "teacher" else None})
 
@@ -1363,6 +1524,8 @@ class PhysicsHouseApp:
             fail(404, "user_not_found", "Account not found")
         if target["id"] == actor["id"] or target["role"] == "admin":
             fail(403, "protected_admin", "Admin accounts cannot be changed through this endpoint")
+        if is_pending_teacher(target):
+            fail(409, "staff_activation_required", "Set a real email and activate this teacher account first")
         if action == "reset-password":
             temporary_password = secrets.token_urlsafe(24)
             conn.execute("UPDATE users SET password_hash=?,must_change_password=1 WHERE id=?", (hash_password(temporary_password), target_id))
@@ -1388,15 +1551,13 @@ class PhysicsHouseApp:
         catalog = COURSE_CATALOG.get((level, subject))
         if catalog is None:
             fail(400, "invalid_subject", "Choose a subject offered at this level")
-        subject_code, subject_name, price = catalog
-        if "price_satang" in data and data["price_satang"] != price:
-            fail(400, "fixed_course_price", "Course reference price is fixed by level")
+        subject_code, subject_name = catalog
+        price = required_int(data, "price_satang", 1, 100_000_000_00)
         title = f"{subject_name} {'ม.ต้น' if level == 'middle' else 'ม.ปลาย'}"
         teacher_id = required_str(data, "teacher_id", 32)
         capacity = required_int(data, "capacity", 1, 100)
-        teacher = conn.execute("SELECT 1 FROM users WHERE id=? AND role='teacher' AND status='active'", (teacher_id,)).fetchone()
-        if not teacher:
-            fail(400, "invalid_teacher", "Assign an active teacher")
+        if not eligible_teacher(conn, teacher_id):
+            fail(400, "invalid_teacher", "Assign an active or pending roster teacher")
         course_id = uid()
         course_code = next_public_code(conn, subject_code)
         conn.execute("INSERT INTO courses(id,course_code,subject_code,title,subject,level,price_satang,teacher_id,capacity,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (course_id, course_code, subject_code, title, subject, level, price, teacher_id, capacity, now()))
@@ -1407,13 +1568,12 @@ class PhysicsHouseApp:
         course = conn.execute("SELECT * FROM courses WHERE id=?", (course_id,)).fetchone()
         if not course:
             fail(404, "course_not_found", "Course not found")
-        if not data or set(data) - {"teacher_id", "capacity", "active"}:
-            fail(400, "invalid_input", "Only teacher, capacity and active status can be updated")
+        if not data or set(data) - {"price_satang", "teacher_id", "capacity", "active"}:
+            fail(400, "invalid_input", "Only price, teacher, capacity and active status can be updated")
         teacher_id = data.get("teacher_id", course["teacher_id"])
-        if not isinstance(teacher_id, str) or not conn.execute(
-            "SELECT 1 FROM users WHERE id=? AND role='teacher' AND status='active'", (teacher_id,)
-        ).fetchone():
-            fail(400, "invalid_teacher", "Assign an active teacher")
+        if not isinstance(teacher_id, str) or not eligible_teacher(conn, teacher_id):
+            fail(400, "invalid_teacher", "Assign an active or pending roster teacher")
+        price = required_int(data, "price_satang", 1, 100_000_000_00) if "price_satang" in data else course["price_satang"]
         capacity = required_int(data, "capacity", 1, 100) if "capacity" in data else course["capacity"]
         enrolled = conn.execute("SELECT COUNT(*) FROM enrollments WHERE course_id=? AND status='active'", (course_id,)).fetchone()[0]
         if capacity < enrolled:
@@ -1422,11 +1582,11 @@ class PhysicsHouseApp:
         if not isinstance(active, bool):
             fail(400, "invalid_input", "active must be true or false")
         catalog = COURSE_CATALOG.get((course["level"], course["subject"]))
-        if active and (catalog is None or course["price_satang"] != catalog[2]):
-            fail(409, "legacy_course_price", "This historical course does not match the current catalog")
-        conn.execute("UPDATE courses SET teacher_id=?,capacity=?,active=? WHERE id=?", (teacher_id, capacity, int(active), course_id))
-        self.audit(conn, actor["id"], "course", course_id, "update", {"teacher_id": teacher_id, "capacity": capacity, "active": active})
-        return Response(200, {"course_id": course_id, "course_code": course["course_code"], "teacher_id": teacher_id, "capacity": capacity, "active": active})
+        if active and catalog is None:
+            fail(409, "legacy_course_subject", "This historical subject is no longer offered")
+        conn.execute("UPDATE courses SET price_satang=?,teacher_id=?,capacity=?,active=? WHERE id=?", (price, teacher_id, capacity, int(active), course_id))
+        self.audit(conn, actor["id"], "course", course_id, "update", {"old_price_satang": course["price_satang"], "price_satang": price, "teacher_id": teacher_id, "capacity": capacity, "active": active})
+        return Response(200, {"course_id": course_id, "course_code": course["course_code"], "price_satang": price, "teacher_id": teacher_id, "capacity": capacity, "active": active})
 
     def _admin_enroll(self, conn: sqlite3.Connection, actor: sqlite3.Row, data: dict) -> Response:
         course_id = required_str(data, "course_id", 32)
@@ -1491,8 +1651,8 @@ class PhysicsHouseApp:
         if not room_name or any(ord(c) < 32 or ord(c) == 127 for c in room_name):
             fail(400, "invalid_room", "Enter a valid room name")
         teacher_id = required_str(data, "teacher_id", 32)
-        if not conn.execute("SELECT 1 FROM users WHERE id=? AND role='teacher' AND status='active'", (teacher_id,)).fetchone():
-            fail(400, "invalid_teacher", "Assign an active teacher")
+        if not eligible_teacher(conn, teacher_id):
+            fail(400, "invalid_teacher", "Assign an active or pending roster teacher")
         start = parse_datetime(required_str(data, "starts_at", 50))
         end = parse_datetime(required_str(data, "ends_at", 50))
         if end - start < 10 * 60 or end - start > 8 * 3600:
@@ -1585,9 +1745,9 @@ class PhysicsHouseApp:
         if rule["state"] != "pending_confirmation":
             fail(409, "rate_locked", "Rate rule has already been reviewed")
         teacher_id = required_str(data, "teacher_id", 32)
-        teacher = conn.execute("SELECT * FROM users WHERE id=? AND role='teacher' AND status='active'", (teacher_id,)).fetchone()
-        if not teacher:
-            fail(400, "invalid_teacher", "Select an active teacher")
+        teacher = conn.execute("SELECT * FROM users WHERE id=? AND role='teacher'", (teacher_id,)).fetchone()
+        if not eligible_teacher(conn, teacher_id):
+            fail(400, "invalid_teacher", "Select an active or pending roster teacher")
         mismatch_reason = None
         if teacher["name"].strip().casefold() != rule["teacher_label"].strip().casefold():
             if data.get("confirm_name_mismatch") is not True:
@@ -1634,9 +1794,9 @@ class PhysicsHouseApp:
         if scope not in {"teacher", "global"}:
             fail(400, "invalid_scope", "Choose teacher or global rate")
         teacher_id = None if scope == "global" else required_str(data, "teacher_id", 32)
-        teacher = None if teacher_id is None else conn.execute("SELECT * FROM users WHERE id=? AND role='teacher' AND status='active'", (teacher_id,)).fetchone()
-        if scope == "teacher" and not teacher:
-            fail(400, "invalid_teacher", "Select an active teacher")
+        teacher = None if teacher_id is None else conn.execute("SELECT * FROM users WHERE id=? AND role='teacher'", (teacher_id,)).fetchone()
+        if scope == "teacher" and not eligible_teacher(conn, teacher_id):
+            fail(400, "invalid_teacher", "Select an active or pending roster teacher")
         subject = required_str(data, "subject", 40)
         level = required_str(data, "level", 10)
         if subject not in {"all", "science", "math", "physics", "chemistry", "biology", "chemistry_biology", "english", "thai", "social", "other"} or level not in {"middle", "high"} or (scope == "global" and subject != "all"):

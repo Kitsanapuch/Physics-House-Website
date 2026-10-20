@@ -126,7 +126,7 @@ class MailerTests(unittest.TestCase):
 
     def test_gmail_takes_priority_and_uses_verified_tls_with_generic_message(self):
         with patch.dict(os.environ, {
-            "PH_GMAIL_USER": "physics.house@gmail.com",
+            "PH_GMAIL_USER": "physicsplus.test@gmail.com",
             "PH_GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop",
         }):
             self.assertTrue(delivery_configured())
@@ -140,9 +140,9 @@ class MailerTests(unittest.TestCase):
         self.assertEqual((smtp.host, smtp.port, smtp.timeout), ("smtp.gmail.com", 465, 5.0))
         self.assertEqual(smtp.context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(smtp.context.check_hostname)
-        self.assertEqual(smtp.login_args, ("physics.house@gmail.com", "abcdefghijklmnop"))
-        self.assertEqual((smtp.from_addr, smtp.to_addrs), ("physics.house@gmail.com", ["student@gmail.com"]))
-        self.assertEqual(smtp.message["From"], "physics.house@gmail.com")
+        self.assertEqual(smtp.login_args, ("physicsplus.test@gmail.com", "abcdefghijklmnop"))
+        self.assertEqual((smtp.from_addr, smtp.to_addrs), ("physicsplus.test@gmail.com", ["student@gmail.com"]))
+        self.assertEqual(smtp.message["From"], "physicsplus.test@gmail.com")
         self.assertEqual(smtp.message["To"], "student@gmail.com")
         self.assertNotIn("invoice-123", smtp.message.get_content())
         self.assertNotIn("student@gmail.com", smtp.message.get_content())
@@ -151,7 +151,7 @@ class MailerTests(unittest.TestCase):
 
     def test_gmail_auth_and_provider_errors_are_private_and_classified(self):
         with patch.dict(os.environ, {
-            "PH_GMAIL_USER": "physics.house@gmail.com",
+            "PH_GMAIL_USER": "physicsplus.test@gmail.com",
             "PH_GMAIL_APP_PASSWORD": "abcdefghijklmnop",
         }):
             _SMTP.error_on_login = smtplib.SMTPAuthenticationError(535, b"private auth detail")
@@ -194,7 +194,7 @@ class MailerTests(unittest.TestCase):
 
     def test_partial_gmail_configuration_uses_resend_when_available(self):
         _Connection.responses = [_Response(200, b'{"id":"email_2"}')]
-        with patch.dict(os.environ, {"PH_GMAIL_USER": "physics.house@gmail.com", "PH_GMAIL_APP_PASSWORD": ""}):
+        with patch.dict(os.environ, {"PH_GMAIL_USER": "physicsplus.test@gmail.com", "PH_GMAIL_APP_PASSWORD": ""}):
             self.assertTrue(delivery_configured())
             self.assertTrue(send_update_email("student@gmail.com", event_id="x").sent)
         self.assertEqual(len(_Connection.requests), 1)
@@ -204,7 +204,7 @@ class MailerTests(unittest.TestCase):
         owner = MagicMock()
         owner.dispatch_outbox.return_value = {"processed": 0, "sent": 0, "retrying": 0, "dead": 0}
         with patch.dict(os.environ, {
-            "PH_GMAIL_USER": "physics.house@gmail.com",
+            "PH_GMAIL_USER": "physicsplus.test@gmail.com",
             "PH_GMAIL_APP_PASSWORD": "abcdefghijklmnop",
             "RESEND_API_KEY": "", "PH_EMAIL_FROM": "",
             "PH_ADMIN_NOTIFICATION_EMAIL": "owner@gmail.com",

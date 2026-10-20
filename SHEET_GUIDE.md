@@ -1,6 +1,6 @@
 # วิธีใช้ Google Sheet ค่าจ้างครู
 
-[เปิดชีต Physics House](https://docs.google.com/spreadsheets/d/19ttYb9SW71JtV7nGBWKbGeeZZLORzHLQvdsbNsEX3UI/edit)
+[เปิดชีต Physics Plus](https://docs.google.com/spreadsheets/d/19ttYb9SW71JtV7nGBWKbGeeZZLORzHLQvdsbNsEX3UI/edit)
 
 ชีตนี้เป็นมุมมองสำหรับผู้ดูแล ปัจจุบันฐานข้อมูลของเว็บไซต์อยู่ใน Turso และ **ยังไม่ซิงก์เข้าชีตอัตโนมัติ** หากลงเวลาสอนในเว็บไซต์ ให้ผู้ดูแลส่งออก CSV จากหน้า “ส่งออกข้อมูล” แล้วนำข้อมูลมาเข้าชีตด้วยการตรวจสอบรหัสคาบ/ครูและสถานะก่อน เพื่อไม่ให้บันทึกซ้ำ รายการที่กรอกหรือแก้ในชีตจะทำให้สูตรสรุปคำนวณใหม่ทันที
 

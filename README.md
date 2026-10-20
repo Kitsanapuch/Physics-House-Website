@@ -1,6 +1,6 @@
-# Physics House Website
+# Physics Plus Website
 
-ระบบเว็บไซต์ร้านสอนพิเศษ Physics House สำหรับนักเรียน ครู และผู้ดูแล พัฒนาบนกิ่ง `DevTutor` ก่อนนำขึ้นใช้งานจริง
+ระบบเว็บไซต์ร้านสอนพิเศษ Physics Plus สำหรับนักเรียน ครู และผู้ดูแล พัฒนาบนกิ่ง `DevTutor` ก่อนนำขึ้นใช้งานจริง
 
 - [คู่มือติดตั้งบน Vercel](DEPLOY.md)
 - [คู่มือ Google Sheet ค่าจ้างครู](SHEET_GUIDE.md)

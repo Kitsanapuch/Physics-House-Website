@@ -1,6 +1,6 @@
 """Send privacy-preserving transactional notifications through Gmail or Resend.
 
-Only the sender and recipient addresses leave Physics House; the subject and message are
+Only the sender and recipient addresses leave Physics Plus; the subject and message are
 fixed and contain no student, guardian, timetable, or financial details. A
 successful response means the selected provider accepted the message, not
 that it reached the recipient's inbox. This module never sends without a
@@ -29,10 +29,10 @@ from email.message import EmailMessage
 _API_HOST = "api.resend.com"
 _API_PATH = "/emails"
 _TIMEOUT_SECONDS = 5.0
-_SUBJECT = "Physics House: มีข้อมูลอัปเดตในระบบ"
+_SUBJECT = "Physics Plus: มีข้อมูลอัปเดตในระบบ"
 _MESSAGE = (
-    "มีข้อมูลอัปเดตในระบบ Physics House\n"
-    "กรุณาเข้าสู่เว็บไซต์ Physics House ด้วยตนเองเพื่อตรวจสอบรายละเอียด\n"
+    "มีข้อมูลอัปเดตในระบบ Physics Plus\n"
+    "กรุณาเข้าสู่เว็บไซต์ Physics Plus ด้วยตนเองเพื่อตรวจสอบรายละเอียด\n"
     "หากไม่ได้คาดว่าจะได้รับอีเมลนี้ โปรดละเลยข้อความนี้"
 )
 _LOCAL_RE = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+\Z", re.ASCII)
@@ -177,7 +177,7 @@ def send_update_email(recipient_email: str, *, event_id: str) -> MailResult:
     # Hash the database event ID and address so neither appears in an HTTP
     # header. A single event sent to several recipients gets distinct keys.
     unique = f"{event_id}\x00{recipient.casefold()}".encode("utf-8")
-    idempotency_key = "ph-" + hashlib.sha256(unique).hexdigest()
+    idempotency_key = "pp-" + hashlib.sha256(unique).hexdigest()
     payload = json.dumps(
         {"from": sender, "to": [recipient], "subject": _SUBJECT, "text": _MESSAGE},
         ensure_ascii=False,

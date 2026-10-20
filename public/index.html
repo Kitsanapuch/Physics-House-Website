@@ -4,19 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#10110f">
-  <title>Physics House — เข้าสู่พื้นที่การเรียนรู้</title>
-  <link rel="icon" href="physics-house-logo-yellow-black.png">
+  <title>Physics Plus — เข้าสู่พื้นที่การเรียนรู้</title>
+  <link rel="icon" href="physics-plus-logo-yellow-black.png">
   <link rel="stylesheet" href="portal.css?v=9">
 </head>
 <body>
   <div class="ambient" aria-hidden="true"><span>E = mc²</span><span>F = ma</span><span>∫ x dx</span></div>
   <header class="topbar">
-    <a class="brand" href="index.html" aria-label="Physics House หน้าแรก"><img src="physics-house-logo-yellow-black.png" alt="โลโก้ Physics House"><span>Physics House<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="index.html" aria-label="Physics Plus หน้าแรก"><img src="physics-plus-logo-yellow-black.png" alt="โลโก้ Physics Plus"><span>Physics Plus<span class="brand-dot">.</span></span></a>
     <nav aria-label="เมนูหลัก"><span class="nav-current">พื้นที่การเรียนรู้</span><button id="about-button" type="button">เกี่ยวกับเรา</button></nav>
   </header>
   <main class="portal-layout">
     <section class="story" aria-labelledby="hero-title">
-      <div class="story-top"><span class="mini-line"></span><span>PHYSICS HOUSE · LEARNING SPACE</span></div>
+      <div class="story-top"><span class="mini-line"></span><span>PHYSICS PLUS · LEARNING SPACE</span></div>
       <h1 id="hero-title">เรียนให้เข้าใจ<br><span>ไปได้ไกลกว่าเดิม<span class="dot">.</span></span></h1>
       <p>พื้นที่เรียนรู้สำหรับนักเรียนมัธยม ครบทั้งฟิสิกส์ เคมี ชีวะ คณิตศาสตร์ และวิชาทั่วไป</p>
       <div class="subjects" role="group" aria-label="สำรวจกลุ่มวิชาที่สอน"><button type="button" class="active" data-subject="physics" aria-pressed="true">ฟิสิกส์</button><button type="button" data-subject="chemistry" aria-pressed="false">เคมี</button><button type="button" data-subject="biology" aria-pressed="false">ชีวะ</button><button type="button" data-subject="math" aria-pressed="false">คณิตศาสตร์</button><button type="button" data-subject="general" aria-pressed="false">ภาษาอังกฤษ</button></div>
@@ -47,10 +47,10 @@
         <button id="enter-demo" class="enter-button" type="button" disabled><span id="entry-label">กำลังเชื่อมต่อระบบ…</span><span aria-hidden="true">→</span></button>
         <p class="prototype-note">กรุณารอสักครู่</p><p id="auth-feedback" class="auth-feedback" role="status" aria-live="polite"></p>
       </div>
-      <div class="card-footer"><span class="footer-line"></span><span>PHYSICS HOUSE</span><span class="footer-line"></span></div>
+      <div class="card-footer"><span class="footer-line"></span><span>PHYSICS PLUS</span><span class="footer-line"></span></div>
     </section>
   </main>
-  <dialog id="info"><button class="close" aria-label="ปิด">×</button><p class="eyebrow">PHYSICS HOUSE</p><h2 id="info-title">พื้นที่เรียนรู้สำหรับเด็กมัธยม</h2><p id="info-text"></p><button class="dialog-primary">เข้าใจแล้ว</button></dialog>
+  <dialog id="info"><button class="close" aria-label="ปิด">×</button><p class="eyebrow">PHYSICS PLUS</p><h2 id="info-title">พื้นที่เรียนรู้สำหรับเด็กมัธยม</h2><p id="info-text"></p><button class="dialog-primary">เข้าใจแล้ว</button></dialog>
 <script>
 const d=document, tabs=[d.getElementById('login-tab'),d.getElementById('register-tab')];
 let liveAuth=false;
@@ -81,7 +81,7 @@ function setPasswordVisibility(shown){const input=d.getElementById('password'),b
 d.getElementById('password-toggle').addEventListener('click',()=>setPasswordVisibility(d.getElementById('password').type==='password'));
 tabs.forEach((b,i)=>{b.onclick=()=>selectTab(Boolean(i));b.onkeydown=e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const next=1-i;selectTab(Boolean(next));tabs[next].focus()}}});
 const modal=d.getElementById('info');function info(title,message){d.getElementById('info-title').textContent=title;d.getElementById('info-text').textContent=message;modal.showModal()}
-d.getElementById('about-button').onclick=()=>info('พื้นที่เรียนรู้สำหรับเด็กมัธยม','Physics House สอนวิชาทั่วไป โดยเน้นนักเรียนระดับมัธยม นักเรียนสมัครบัญชีและสมัครเรียนได้ในระบบ ส่วนครูและผู้ดูแลใช้บัญชีที่สถาบันจัดให้');modal.querySelector('.close').onclick=()=>modal.close();modal.querySelector('.dialog-primary').onclick=()=>modal.close();
+d.getElementById('about-button').onclick=()=>info('พื้นที่เรียนรู้สำหรับเด็กมัธยม','Physics Plus สอนวิชาทั่วไป โดยเน้นนักเรียนระดับมัธยม นักเรียนสมัครบัญชีและสมัครเรียนได้ในระบบ ส่วนครูและผู้ดูแลใช้บัญชีที่สถาบันจัดให้');modal.querySelector('.close').onclick=()=>modal.close();modal.querySelector('.dialog-primary').onclick=()=>modal.close();
 const authButton=d.getElementById('enter-demo'),feedback=d.getElementById('auth-feedback');
 function authModeLabel(){if(liveAuth)d.getElementById('entry-label').textContent=registerMode()?'สร้างบัญชีนักเรียน':'เข้าสู่ระบบ'}
 async function activateLiveLogin(){try{

@@ -1,7 +1,7 @@
-"""Remote, transactional Turso storage for the Physics House API.
+"""Remote, transactional Turso storage for the Physics Plus API.
 
 Both remote drivers keep one connection open for each API request, preserving
-the explicit BEGIN IMMEDIATE / COMMIT boundaries in backend.PhysicsHouseApp.
+the explicit BEGIN IMMEDIATE / COMMIT boundaries in backend.PhysicsPlusApp.
 """
 
 from __future__ import annotations
@@ -18,7 +18,9 @@ import turso_serverless
 
 from backend import (
     COURSE_CATALOG,
-    PhysicsHouseApp,
+    BRAND_CODES_MIGRATION,
+    TEACHER_ROSTER_MIGRATION,
+    PhysicsPlusApp,
     RATE_GRID,
     RATE_GRID_EFFECTIVE_FROM,
     RATE_GRID_MIGRATION,
@@ -27,6 +29,8 @@ from backend import (
     fail,
     migrate_outbox_schema,
     migrate_academic_schema,
+    migrate_brand_codes,
+    seed_initial_teachers,
     now,
     uid,
 )
@@ -150,7 +154,7 @@ class ClosingRemoteConnection:
 class PersistentRateLimiter:
     """Share authentication attempt limits across Vercel function instances."""
 
-    def __init__(self, owner: RemotePhysicsHouseApp) -> None:
+    def __init__(self, owner: RemotePhysicsPlusApp) -> None:
         self.owner = owner
 
     def check(self, key: str, limit: int, period: int) -> None:
@@ -190,7 +194,7 @@ class PersistentRateLimiter:
             conn.commit()
 
 
-class RemotePhysicsHouseApp(PhysicsHouseApp):
+class RemotePhysicsPlusApp(PhysicsPlusApp):
     def __init__(
         self,
         database_url: str,
@@ -258,6 +262,8 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
             conn.executescript(SCHEMA + THROTTLE_SCHEMA)
             migrate_outbox_schema(conn)
             migrate_academic_schema(conn)
+            migrate_brand_codes(conn)
+            seed_initial_teachers(conn)
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute(
                 "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
@@ -313,9 +319,8 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
             user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
             course_columns = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
             class_columns = {row[1] for row in conn.execute("PRAGMA table_info(class_sessions)").fetchall()}
-            clauses = " OR ".join("(level=? AND subject=? AND price_satang=?)" for _ in COURSE_CATALOG)
-            catalog_args = tuple(value for (level, subject), (_, _, price) in COURSE_CATALOG.items()
-                                 for value in (level, subject, price))
+            clauses = " OR ".join("(level=? AND subject=?)" for _ in COURSE_CATALOG)
+            catalog_args = tuple(value for level, subject in COURSE_CATALOG for value in (level, subject))
             invalid_active = conn.execute(
                 "SELECT COUNT(*) FROM courses WHERE active=1 AND NOT (" + clauses + ")", catalog_args
             ).fetchone()[0]
@@ -324,13 +329,17 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
                 "+(SELECT COUNT(*) FROM courses WHERE course_code IS NULL OR subject_code IS NULL)"
                 "+(SELECT COUNT(*) FROM class_sessions WHERE teacher_id IS NULL OR room_name IS NULL)"
             ).fetchone()[0]
+            new_migrations = conn.execute(
+                "SELECT COUNT(*) FROM app_migrations WHERE key IN (?,?)",
+                (BRAND_CODES_MIGRATION, TEACHER_ROSTER_MIGRATION),
+            ).fetchone()[0]
             return {
                 "schema_initialized": bool(marker) and bool(throttle_table) and
                                       {"id", "first_attempt_at", "lease_token"}.issubset(outbox_columns) and
                                       {"public_code"}.issubset(user_columns) and
                                       {"course_code", "subject_code"}.issubset(course_columns) and
                                       {"room_name", "teacher_id"}.issubset(class_columns) and
-                                      len(COURSE_CATALOG) == 8 and invalid_active == 0 and missing_codes == 0,
+                                      len(COURSE_CATALOG) == 8 and invalid_active == 0 and missing_codes == 0 and new_migrations == 2,
                 "admin_count": admin_count,
                 "active_admin_count": active_admin_count,
                 "confirmed_default_rate_count": len(rate_rows),

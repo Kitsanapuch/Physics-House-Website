@@ -30,7 +30,7 @@ class DeploymentPackageTests(unittest.TestCase):
         connection_patch.start()
         self.addCleanup(connection_patch.stop)
 
-        self.owner = remote.RemotePhysicsHouseApp(
+        self.owner = remote.RemotePhysicsPlusApp(
             "turso://test.example", "synthetic-test-token", "https://school.example"
         )
         self.owner.initialize_remote()
@@ -44,13 +44,29 @@ class DeploymentPackageTests(unittest.TestCase):
         status = self.owner.check_remote()
         self.assertTrue(status["schema_initialized"])
         self.assertEqual(status["confirmed_default_rate_count"], 8)
-        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
         with self.assertRaises(ApiError):
             self.owner.bootstrap_admin(None, "Admin 2", "SafeTestPassword123!", "other-admin")
         self.assertEqual(self.owner.check_remote()["admin_count"], 1)
 
+    def test_admin_reauthenticated_migration_is_idempotent(self) -> None:
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
+        client = site.app.test_client()
+        login = client.post("/api/auth/login", base_url=self.base_url,
+                            headers={"Origin": self.base_url},
+                            json={"login": "physicsplus", "password": "SafeTestPassword123!"})
+        headers = {"Origin": self.base_url, "X-CSRF-Token": login.json["csrf_token"]}
+        route = "/api/admin/maintenance/initialize"
+        self.assertEqual(client.post(route, base_url=self.base_url, headers=headers,
+                                     json={"current_password": "wrong"}).status_code, 401)
+        self.assertEqual(client.post(route, base_url=self.base_url, headers=headers,
+                                     json={"current_password": "SafeTestPassword123!"}).status_code, 200)
+        teachers = [u for u in client.get("/api/admin/users", base_url=self.base_url).json["users"]
+                    if u["role"] == "teacher"]
+        self.assertEqual(len(teachers), 3)
+
     def test_private_dashboard_login_and_student_registration(self) -> None:
-        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
         client = site.app.test_client()
         self.assertEqual(client.get("/dashboard.html", base_url=self.base_url).status_code, 303)
         self.assertEqual(client.get("/private/dashboard.html", base_url=self.base_url).status_code, 404)
@@ -59,7 +75,7 @@ class DeploymentPackageTests(unittest.TestCase):
             "/api/auth/login",
             base_url=self.base_url,
             headers={"Origin": "https://attacker.example"},
-            json={"login": "physicshouse", "password": "SafeTestPassword123!"},
+            json={"login": "physicsplus", "password": "SafeTestPassword123!"},
         )
         self.assertEqual(bad_origin.status_code, 403)
 
@@ -67,7 +83,7 @@ class DeploymentPackageTests(unittest.TestCase):
             "/api/auth/login",
             base_url=self.base_url,
             headers={"Origin": self.base_url},
-            json={"login": "physicshouse", "password": "SafeTestPassword123!"},
+            json={"login": "physicsplus", "password": "SafeTestPassword123!"},
         )
         self.assertEqual(login.status_code, 200)
         self.assertEqual(login.json["user"]["role"], "admin")
@@ -97,7 +113,7 @@ class DeploymentPackageTests(unittest.TestCase):
         self.assertEqual(student.get("/admin", base_url=self.base_url).status_code, 403)
 
     def test_throttle_persists_across_app_instances(self) -> None:
-        second_instance = remote.RemotePhysicsHouseApp(
+        second_instance = remote.RemotePhysicsPlusApp(
             "turso://test.example", "synthetic-test-token", "https://school.example"
         )
         for _ in range(5):
@@ -122,18 +138,19 @@ class DeploymentPackageTests(unittest.TestCase):
             )
 
     def test_administrator_controls_student_invoice_amount(self) -> None:
-        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
         admin = site.app.test_client()
         login = admin.post("/api/auth/login", base_url=self.base_url,
                            headers={"Origin": self.base_url},
-                           json={"login": "physicshouse", "password": "SafeTestPassword123!"})
+                           json={"login": "physicsplus", "password": "SafeTestPassword123!"})
         admin_headers = {"Origin": self.base_url, "X-CSRF-Token": login.json["csrf_token"]}
         teacher = admin.post("/api/admin/staff", base_url=self.base_url, headers=admin_headers,
                              json={"name": "Example Teacher", "email": "teacher@example.com", "role": "teacher"})
         self.assertEqual(teacher.status_code, 201, teacher.json)
         course = admin.post("/api/admin/courses", base_url=self.base_url, headers=admin_headers,
                             json={"subject": "physics", "level": "high",
-                                  "teacher_id": teacher.json["user"]["id"], "capacity": 10})
+                                  "teacher_id": teacher.json["user"]["id"], "capacity": 10,
+                                  "price_satang": 450_000})
         self.assertEqual(course.status_code, 201, course.json)
         student = site.app.test_client()
         registration = student.post("/api/auth/register", base_url=self.base_url,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted one-time Turso setup commands for Physics House."""
+"""Trusted one-time Turso setup commands for Physics Plus."""
 
 from __future__ import annotations
 
@@ -12,23 +12,23 @@ from turso_serverless import DatabaseError
 from turso_serverless.protocol import ProtocolError
 
 from backend import ApiError
-from remote import RemotePhysicsHouseApp
+from remote import RemotePhysicsPlusApp
 
 
-def backend() -> RemotePhysicsHouseApp:
+def backend() -> RemotePhysicsPlusApp:
     database_url = os.getenv("TURSO_DATABASE_URL", "").strip()
     token = os.getenv("TURSO_AUTH_TOKEN", "").strip()
     # No HTTP requests are served by this process. Origin matters only for
     # cookie attributes and host checks in the deployed app.
-    return RemotePhysicsHouseApp(database_url, token, "https://physics-house.invalid")
+    return RemotePhysicsPlusApp(database_url, token, "https://physics-plus.invalid")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Manage the Physics House remote database")
+    parser = argparse.ArgumentParser(description="Manage the Physics Plus remote database")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="Create schema and the reviewed default rate grid")
     bootstrap = sub.add_parser("bootstrap-admin", help="Create the only administrator account")
-    bootstrap.add_argument("--username", default="physicshouse")
+    bootstrap.add_argument("--username", default="physicsplus")
     sub.add_parser("check", help="Read-only deployment readiness check")
     args = parser.parse_args()
 
@@ -56,7 +56,7 @@ def main() -> int:
             if password != confirm:
                 print("Passwords do not match.", file=sys.stderr)
                 return 1
-            owner.bootstrap_admin(None, "ผู้ดูแล Physics House", password, args.username)
+            owner.bootstrap_admin(None, "ผู้ดูแล Physics Plus", password, args.username)
             print("Administrator created. No plaintext password was written to a file.")
             return 0
 

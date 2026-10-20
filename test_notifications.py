@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app as site
-from backend import PhysicsHouseApp, migrate_outbox_schema, now, uid
+from backend import PhysicsPlusApp, migrate_outbox_schema, now, uid
 from mailer import MailResult
 
 
@@ -20,7 +20,7 @@ class NotificationOutboxTests(unittest.TestCase):
     def setUp(self) -> None:
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        self.owner = PhysicsHouseApp(Path(temp.name) / "test.sqlite3", "https://school.example")
+        self.owner = PhysicsPlusApp(Path(temp.name) / "test.sqlite3", "https://school.example")
         self.origin_headers = {"host": "school.example", "origin": "https://school.example"}
 
     def register_student(self) -> str:
@@ -58,7 +58,7 @@ class NotificationOutboxTests(unittest.TestCase):
                 self.assertEqual(result.status, 400)
                 self.assertEqual(result.body["error"]["code"], "invalid_email")
         with self.owner.connect() as conn:
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM users WHERE role='student'").fetchone()[0], 0)
 
     def test_duplicate_enqueue_is_ignored_and_sent_once(self) -> None:
         student_id = self.register_student()
@@ -206,9 +206,9 @@ class NotificationOutboxTests(unittest.TestCase):
         self.assertEqual(student_view.status, 403)
         with self.owner.connect() as conn:
             conn.execute("UPDATE notification_outbox SET status='dead',last_error_code='provider_rejected'")
-        self.owner.bootstrap_admin(None, "Admin", "SyntheticPassword123!", "physicshouse")
+        self.owner.bootstrap_admin(None, "Admin", "SyntheticPassword123!", "physicsplus")
         login = self.owner.handle(
-            "POST", "/api/auth/login", {"login": "physicshouse", "password": "SyntheticPassword123!"},
+            "POST", "/api/auth/login", {"login": "physicsplus", "password": "SyntheticPassword123!"},
             self.origin_headers, "127.0.0.2",
         )
         self.assertEqual(login.status, 200, login.body)

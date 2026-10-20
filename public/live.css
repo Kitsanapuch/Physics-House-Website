@@ -45,6 +45,10 @@ body .new-section>.panel{margin-bottom:20px}
 .class-dialog .class-student-picker{grid-template-columns:repeat(2,minmax(0,1fr));max-height:180px}
 .report-controls{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-top:16px}.report-controls label{display:grid;gap:6px;margin:0;color:#666b60;font-size:11px;font-weight:600}.report-controls select{min-width:230px;padding:10px 11px;border:1px solid #dedfd5;border-radius:8px;background:#fbfbf8;color:#20221b;font-size:12px}.report-controls button{padding:10px 16px;font-size:11px}
 .admin-search-label{display:grid;gap:6px;max-width:360px;margin:12px 0 16px;color:#666b60;font-size:11px;font-weight:600}
+.staff-panel-head{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.staff-panel-head button{white-space:nowrap}
+.staff-summary{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+.staff-summary span{display:inline-block;padding:7px 10px;border:1px solid #e9dfb0;border-radius:999px;background:#fff7cf;color:#554916;font-size:11px;font-weight:700}
 .admin-search-label input{width:100%;padding:10px 11px;border:1px solid #dedfd5;border-radius:8px;background:#fbfbf8;color:#20221b;font-size:12px}
 .admin-search-label input:focus{outline:2px solid #e6c523;outline-offset:1px}
 .row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
