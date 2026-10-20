@@ -3,6 +3,12 @@
   "framework": "flask",
   "redirects": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "physicshouse.vercel.app" }],
+      "destination": "https://physicsplus.vercel.app/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "physicshouse.vercel.app" }],
       "destination": "https://physicsplus.vercel.app/:path*",
