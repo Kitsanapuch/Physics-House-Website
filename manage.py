@@ -11,7 +11,7 @@ import sys
 from turso_serverless import DatabaseError
 from turso_serverless.protocol import ProtocolError
 
-from backend import ApiError, RATE_GRID
+from backend import ApiError
 from remote import RemotePhysicsHouseApp
 
 
@@ -62,9 +62,11 @@ def main() -> int:
 
         print(
             "schema_initialized={schema_initialized} admin_count={admin_count} "
-            "confirmed_default_rate_count={confirmed_default_rate_count}".format(**status)
+            "active_admin_count={active_admin_count} "
+            "confirmed_default_rate_count={confirmed_default_rate_count} "
+            "default_rate_grid_matches={default_rate_grid_matches}".format(**status)
         )
-        ready = status["admin_count"] == 1 and status["confirmed_default_rate_count"] >= len(RATE_GRID)
+        ready = status["active_admin_count"] == 1 and status["default_rate_grid_matches"]
         if not ready:
             print("Database is not ready for production use.", file=sys.stderr)
         return 0 if ready else 1

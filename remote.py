@@ -1,17 +1,19 @@
 """Remote, transactional Turso storage for the Physics House API.
 
-Turso's serverless DB-API driver holds a stream baton for the lifetime of a
-connection. Keeping one connection open for each API request preserves the
-explicit BEGIN IMMEDIATE / COMMIT boundaries in backend.PhysicsHouseApp.
+Both remote drivers keep one connection open for each API request, preserving
+the explicit BEGIN IMMEDIATE / COMMIT boundaries in backend.PhysicsHouseApp.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import sqlite3
+from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import libsql
 import turso_serverless
 
 from backend import (
@@ -39,10 +41,93 @@ CREATE TABLE IF NOT EXISTS login_throttle (
 """
 
 
+class LibsqlRow(tuple):
+    """Give libsql's tuple results the index and column-name API of sqlite3.Row."""
+
+    def __new__(cls, values: tuple, columns: tuple[str, ...]) -> LibsqlRow:
+        row = super().__new__(cls, values)
+        row._columns = columns
+        return row
+
+    def __getitem__(self, key: int | slice | str):
+        if isinstance(key, str):
+            for index, name in enumerate(self._columns):
+                if name.casefold() == key.casefold():
+                    return super().__getitem__(index)
+            raise IndexError(f"No item with that key: {key}")
+        return super().__getitem__(key)
+
+    def keys(self) -> list[str]:
+        return list(self._columns)
+
+
+class LibsqlCursor:
+    def __init__(self, cursor: libsql.Cursor) -> None:
+        self._cursor = cursor
+        self._columns = tuple(column[0] for column in cursor.description or ())
+
+    def __getattr__(self, name: str):
+        return getattr(self._cursor, name)
+
+    def _row(self, values: tuple | None) -> LibsqlRow | None:
+        return None if values is None else LibsqlRow(values, self._columns)
+
+    def fetchone(self) -> LibsqlRow | None:
+        return self._row(self._cursor.fetchone())
+
+    def fetchall(self) -> list[LibsqlRow]:
+        return [LibsqlRow(values, self._columns) for values in self._cursor.fetchall() or ()]
+
+    def __iter__(self):
+        while (row := self.fetchone()) is not None:
+            yield row
+
+
+class LibsqlConnection:
+    """Adapt the native libsql driver's missing sqlite3 conveniences."""
+
+    def __init__(self, connection: libsql.Connection) -> None:
+        self._connection = connection
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
+
+    @staticmethod
+    def _call(operation, *args):
+        try:
+            return operation(*args)
+        except ValueError as exc:
+            # The native libsql driver reports SQLite constraint violations as
+            # ValueError, while the domain API uses sqlite3.IntegrityError.
+            if str(exc).lower().startswith((
+                "unique constraint failed", "foreign key constraint failed",
+                "check constraint failed", "not null constraint failed",
+            )):
+                raise sqlite3.IntegrityError("Remote database constraint failed") from exc
+            raise
+
+    def execute(self, sql: str, parameters: tuple | list = ()) -> LibsqlCursor:
+        return LibsqlCursor(self._call(self._connection.execute, sql, parameters))
+
+    def executemany(self, sql: str, parameters: list[tuple]) -> LibsqlCursor:
+        return LibsqlCursor(self._call(self._connection.executemany, sql, parameters))
+
+    def executescript(self, script: str) -> None:
+        # libsql 0.1.11's executescript silently discards execute_batch errors.
+        # Run complete statements individually so schema setup fails closed.
+        start = 0
+        for index, character in enumerate(script):
+            if character == ";" and sqlite3.complete_statement(script[start:index + 1]):
+                self.execute(script[start:index + 1])
+                start = index + 1
+        if script[start:].strip():
+            self.execute(script[start:])
+
+
 class ClosingRemoteConnection:
     """Context manager with sqlite3-style commit/rollback and actual close."""
 
-    def __init__(self, connection: turso_serverless.Connection) -> None:
+    def __init__(self, connection: turso_serverless.Connection | LibsqlConnection) -> None:
         self._connection = connection
 
     def __getattr__(self, name: str):
@@ -114,13 +199,14 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
         extra_origins: set[str] | None = None,
     ) -> None:
         parsed = urlsplit(database_url)
-        if parsed.scheme != "turso" or not parsed.hostname:
-            raise ValueError("TURSO_DATABASE_URL must point to a new-engine turso:// database")
-        if parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        if parsed.scheme not in {"turso", "libsql"} or not parsed.hostname:
+            raise ValueError("TURSO_DATABASE_URL must be a turso:// or libsql:// database URL")
+        if parsed.username is not None or parsed.password is not None or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
             raise ValueError("TURSO_DATABASE_URL must not contain credentials or query text")
         if not auth_token.strip():
             raise ValueError("TURSO_AUTH_TOKEN is required")
         self.database_url = database_url.rstrip("/")
+        self.database_scheme = parsed.scheme
         self.auth_token = auth_token
         # The inherited constructor's migration hook is deliberately a no-op.
         # Remote migrations are an explicit management step, never a side
@@ -137,15 +223,27 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
         pass
 
     def connect(self) -> ClosingRemoteConnection:
-        connection = turso_serverless.connect(
-            self.database_url,
-            auth_token=self.auth_token,
-            isolation_level=None,
-        )
+        if self.database_scheme == "libsql":
+            connection = LibsqlConnection(libsql.connect(
+                database=self.database_url,
+                auth_token=self.auth_token,
+                isolation_level=None,
+                timeout=30.0,
+            ))
+        else:
+            connection = turso_serverless.connect(
+                self.database_url,
+                auth_token=self.auth_token,
+                isolation_level=None,
+            )
         try:
-            connection.row_factory = turso_serverless.Row
+            if self.database_scheme == "turso":
+                connection.row_factory = turso_serverless.Row
             connection.execute("PRAGMA foreign_keys=ON")
-            connection.execute("PRAGMA busy_timeout=30000")
+            # Turso's remote libSQL protocol rejects PRAGMA busy_timeout;
+            # libsql.connect(timeout=30.0) configures the client instead.
+            if self.database_scheme == "turso":
+                connection.execute("PRAGMA busy_timeout=30000")
             enabled = connection.execute("PRAGMA foreign_keys").fetchone()
             if enabled is None or enabled[0] != 1:
                 raise RuntimeError("Remote database must enforce foreign keys")
@@ -197,12 +295,17 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
             marker = conn.execute(
                 "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
             ).fetchone()
-            admin_count = conn.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
-            confirmed_rates = conn.execute(
-                "SELECT COUNT(*) FROM rate_rules WHERE teacher_id IS NULL AND state='confirmed' "
-                "AND effective_from=?",
+            admin_count, active_admin_count = conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(status='active'),0) FROM users WHERE role='admin'"
+            ).fetchone()
+            rate_rows = conn.execute(
+                "SELECT level,min_students,max_students,rate_satang_per_hour,subject,effective_to "
+                "FROM rate_rules WHERE teacher_id IS NULL AND state='confirmed' AND effective_from=?",
                 (RATE_GRID_EFFECTIVE_FROM,),
-            ).fetchone()[0]
+            ).fetchall()
+            expected_rates = Counter((level, low, high, amount, "all", None)
+                                     for level, low, high, amount, _ in RATE_GRID)
+            actual_rates = Counter(tuple(row) for row in rate_rows)
             throttle_table = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='login_throttle'"
             ).fetchone()
@@ -229,7 +332,9 @@ class RemotePhysicsHouseApp(PhysicsHouseApp):
                                       {"room_name", "teacher_id"}.issubset(class_columns) and
                                       len(COURSE_CATALOG) == 8 and invalid_active == 0 and missing_codes == 0,
                 "admin_count": admin_count,
-                "confirmed_default_rate_count": confirmed_rates,
+                "active_admin_count": active_admin_count,
+                "confirmed_default_rate_count": len(rate_rows),
+                "default_rate_grid_matches": actual_rates == expected_rates,
                 "catalog_offering_count": len(COURSE_CATALOG),
                 "invalid_active_course_count": invalid_active,
                 "missing_public_code_count": missing_codes,

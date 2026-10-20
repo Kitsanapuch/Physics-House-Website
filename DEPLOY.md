@@ -1,25 +1,16 @@
 # นำ Physics House ขึ้น Vercel
 
-แพ็กเกจนี้จัดหน้า login และไฟล์ภาพ/สไตล์ไว้ใน `public/` ส่วน `private/dashboard.html` ให้ Flask ที่ `app.py` ระดับรากโปรเจกต์ตรวจเซสชันก่อนส่งหน้า โดยใช้ฐานข้อมูล Turso แบบ **Turso Database engine** ผ่าน `turso_serverless` ข้อมูลบัญชี นักเรียน การเงิน และค่าจ้างอยู่ที่ฐานข้อมูลระยะไกล ไม่ใช้ไฟล์ SQLite ใน Vercel ไฟล์ในแพ็กเกจไม่มีฐานข้อมูลจริงหรือรหัสผ่าน
+แพ็กเกจนี้จัดหน้า login และไฟล์ภาพ/สไตล์ไว้ใน `public/` ส่วน `private/dashboard.html` ให้ Flask ที่ `app.py` ระดับรากโปรเจกต์ตรวจเซสชันก่อนส่งหน้า ข้อมูลบัญชี นักเรียน การเงิน และค่าจ้างอยู่ในฐานข้อมูล Turso ระยะไกล ไม่ใช้ไฟล์ SQLite ใน Vercel ไฟล์ในแพ็กเกจไม่มีฐานข้อมูลจริงหรือรหัสผ่าน
 
-**สถานะ:** คำสั่งด้านล่างเป็นขั้นตอนนำขึ้นระบบ ยังไม่ได้หมายความว่ามี deployment จริงหรือทดสอบกับบัญชี Vercel/Turso ของร้านแล้ว ก่อนรับข้อมูลเด็กจริงต้องผ่านการทดสอบและตรวจการตั้งค่าความปลอดภัยหลัง deploy
+**สถานะ:** มีฐานข้อมูล Turso Cloud แผน Starter จาก Vercel Marketplace เชื่อมกับ environment **Production** ของโปรเจกต์แล้ว โดย integration ให้ตัวแปร `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` เป็นค่า Sensitive ทั้งคู่ ฐานข้อมูลนี้ใช้ URL แบบ libSQL (`libsql://...`) งานปรับและทดสอบไดรเวอร์ Python ให้เข้ากับฐานข้อมูลนี้ยังดำเนินอยู่ การเชื่อมทรัพยากรไม่ได้ยืนยันว่ามี schema, ผู้ดูแล หรือ deployment ที่ใช้งานได้ ก่อนรับข้อมูลเด็กจริงต้องผ่านขั้นตอนเริ่มต้นฐานข้อมูล การทดสอบ และการตรวจการตั้งค่าความปลอดภัยหลัง deploy
 
 ## 1. เตรียมบัญชีและฐานข้อมูล
 
-ต้องมีบัญชี Vercel, Turso และ CLI ของทั้งสองบริการบนเครื่องที่จะติดตั้ง ใช้ Python 3.12 หรือใหม่กว่าและติดตั้งแพ็กเกจจาก `requirements.txt` ตรวจว่าล็อกอิน CLI กับบัญชีและทีมที่ต้องการก่อนสร้างทรัพยากร
+ต้องมีบัญชี Vercel และสิทธิ์จัดการ Turso Cloud integration ใช้ Python 3.12 หรือใหม่กว่าและติดตั้งแพ็กเกจจาก `requirements.txt` บนเครื่องที่ใช้รันคำสั่งจัดการฐานข้อมูล ตรวจว่าล็อกอิน Vercel CLI กับบัญชีและทีมที่ต้องการก่อนดำเนินการ
 
-สร้างฐานข้อมูลใหม่ใน Turso ด้วย **engine ที่ตรงกับไดรเวอร์**:
+สำหรับโปรเจกต์ใหม่ ให้สร้าง Vercel Project ตามข้อ 2 แล้วเปิด Vercel Marketplace → Turso Cloud เลือกแผน Starter หรือแผนที่เหมาะสม สร้างฐานข้อมูลและเชื่อมทรัพยากรกับ environment **Production** ของโปรเจกต์ ตรวจว่ามีตัวแปรชื่อ `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` โดยไม่แสดงค่าลับ ฐานข้อมูลที่เชื่อมผ่าน Marketplace ในขั้นตอนนี้ใช้ libSQL; คำสั่งเก่าที่สร้างฐานข้อมูลด้วย `turso db create --tursodb` ใช้คนละ engine และไม่ใช่ขั้นตอนสำหรับทรัพยากรนี้
 
-```bash
-turso auth login
-turso db create physics-house --tursodb
-turso db show physics-house
-turso db show --url physics-house
-turso db create physics-house-preview --tursodb
-turso db show --url physics-house-preview
-```
-
-สร้าง database auth token แยกให้ฐานข้อมูล Production และ Preview ด้วย `turso db tokens create <database-name>` (ผลลัพธ์เป็นความลับ) แล้วเก็บในตัวจัดการรหัสผ่านของร้าน ห้ามใส่ token ลงในไฟล์นี้, `.env.example`, Git, คำสั่งที่บันทึกประวัติ shell หรือแชต ตรวจว่ามีการสำรองข้อมูลและวิธีกู้คืนในบัญชี Turso ก่อนเริ่ม migration ห้ามใช้ฐานข้อมูล libSQL แบบเก่าโดยละ `--tursodb` เพราะแพ็กเกจนี้ใช้ไดรเวอร์คนละตัว
+สร้างฐานข้อมูล **Preview แยกต่างหาก** ผ่าน Turso Cloud และเชื่อมกับ environment Preview เท่านั้น โดยให้ URL และ token ต่างจาก Production ตรวจว่ามีการสำรองข้อมูลและวิธีกู้คืนในบัญชี Turso ก่อนเริ่ม migration ห้ามใส่ token ลงในไฟล์นี้, `.env.example`, Git, คำสั่งที่บันทึกประวัติ shell หรือแชต
 
 ## 2. ผูกโปรเจกต์ Vercel และตั้งค่าลับ
 
@@ -30,12 +21,12 @@ vercel whoami
 vercel link
 ```
 
-ตรวจชื่อทีม/โปรเจกต์ที่ CLI แสดงก่อนดำเนินการ ตั้งค่า environment variables ของ **Production** ใน Vercel Project Settings → Environment Variables:
+ตรวจชื่อทีม/โปรเจกต์ที่ CLI แสดงก่อนดำเนินการ สำหรับโปรเจกต์นี้ Turso Cloud integration เชื่อมฐานข้อมูลกับ **Production** แล้ว; สำหรับโปรเจกต์ใหม่ให้เชื่อมตามข้อ 1 ตรวจชื่อ environment variables ใน Vercel Project Settings → Environment Variables และตั้งค่าที่เหลือ:
 
 | ชื่อ | ค่า | การเก็บ |
 | --- | --- | --- |
-| `TURSO_DATABASE_URL` | URL ของฐานข้อมูลจาก `turso db show --url physics-house` | ฝั่งเซิร์ฟเวอร์เท่านั้น |
-| `TURSO_AUTH_TOKEN` | token สำหรับฐานข้อมูลนี้ | **Secret**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
+| `TURSO_DATABASE_URL` | URL แบบ `libsql://...` ของฐานข้อมูล Production ที่ Turso Cloud integration เชื่อมให้ | **Sensitive**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
+| `TURSO_AUTH_TOKEN` | token ของฐานข้อมูล Production ที่ Turso Cloud integration เชื่อมให้ | **Sensitive**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
 | `PH_PUBLIC_ORIGIN` | `https://โดเมนจริงของร้าน` ถ้ามี custom domain | exact HTTPS origin; ไม่ใส่เครื่องหมาย `/` ปิดท้าย |
 | `RESEND_API_KEY` | API key ของ Resend หลังสร้างบัญชีและตรวจยืนยันโดเมนผู้ส่ง | **Secret**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
 | `PH_EMAIL_FROM` | อีเมลผู้ส่งบนโดเมนที่ตรวจยืนยันแล้ว เช่น `updates@your-domain.example` | ฝั่งเซิร์ฟเวอร์เท่านั้น |
@@ -46,13 +37,13 @@ vercel link
 
 ใน Vercel Project → Environment Variables ให้เปิด **Enable access to System Environment Variables** เพื่อให้ `VERCEL`, `VERCEL_URL` และ `VERCEL_BRANCH_URL` มีค่าใน runtime หากไม่เปิด ต้องตั้ง `PH_PUBLIC_ORIGIN` เป็น HTTPS origin ที่ตรงกับโดเมนที่ใช้จริง มิฉะนั้น API จะปฏิเสธการทำงาน การเปิดค่านี้จำเป็นสำหรับการทดสอบบน Preview URL โดยไม่มีโดเมนกำหนดเอง
 
-สำหรับ Preview ให้ตั้ง `TURSO_DATABASE_URL` เป็น URL ของ `physics-house-preview` และใช้ token แยกใน environment **Preview** เพื่อไม่ให้บัญชีทดสอบหรือข้อมูลจำลองปะปนกับข้อมูลจริง ไม่ต้องตั้ง `PH_PUBLIC_ORIGIN` สำหรับ Preview เมื่อใช้ URL ที่ Vercel สร้าง อย่าตั้งค่า Preview ให้ชี้ฐานข้อมูล Production
+สำหรับ Preview ให้เชื่อมฐานข้อมูล Turso Cloud อีกฐานกับ environment **Preview** แล้วตรวจว่ามี `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` ของฐานนั้นโดยเฉพาะ เพื่อไม่ให้บัญชีทดสอบหรือข้อมูลจำลองปะปนกับข้อมูลจริง ไม่ต้องตั้ง `PH_PUBLIC_ORIGIN` สำหรับ Preview เมื่อใช้ URL ที่ Vercel สร้าง อย่าตั้งค่า Preview ให้ชี้ฐานข้อมูล Production
 
 การแจ้งอีเมลต้องตั้ง `RESEND_API_KEY` และ `PH_EMAIL_FROM` หลังตรวจยืนยันโดเมนผู้ส่งใน Resend; สำหรับการแจ้งผู้ดูแลต้องมี `PH_ADMIN_NOTIFICATION_EMAIL` ด้วย ข้อความอีเมลบอกเพียงว่ามีข้อมูลอัปเดตและให้กลับมาเข้าเว็บไซต์เอง ไม่ใส่ชื่อเด็ก ข้อมูลผู้ปกครอง จำนวนเงิน หรือเลขอ้างอิง ธุรกรรมหลักบันทึกลงฐานข้อมูลก่อน; อีเมลที่ส่งไม่สำเร็จอยู่ใน outbox เพื่อส่งซ้ำแบบจำกัดครั้งด้วย Cron ถ้ายังไม่ตั้งค่าผู้ส่ง ระบบทำงานด้านข้อมูลได้ แต่ **จะยังไม่มีอีเมลส่งจริง** ห้ามใช้ผู้ส่งที่ไม่ผ่านการยืนยันหรือใส่ API key ในไฟล์ frontend บัญชี Vercel Hobby รัน Cron ได้วันละครั้ง จึงอาจส่งอีเมลที่ต้องลองซ้ำในวันถัดไป และการส่งซ้ำหลังหน้าต่างป้องกันซ้ำของผู้ให้บริการหมดอายุอาจเกิดอีเมลแจ้งทั่วไปซ้ำได้ ผู้ดูแลตรวจจำนวนค้าง/ส่งไม่สำเร็จได้ในหน้าแดชบอร์ด
 
 ## 3. สร้างตารางและผู้ดูแลคนแรก
 
-รัน migration และ bootstrap **จากเครื่องที่เชื่อถือได้** แยกครั้งละฐานข้อมูล: เริ่มที่ Preview เพื่อทดสอบก่อน แล้วจึง Production โดยใช้ URL/token ตรงกับ environment ของ Vercel แต่ละชุด หากฐานข้อมูลมีข้อมูลจากรุ่นก่อน ให้สำรองและทดสอบกู้คืนก่อนรัน `manage.py init` เพื่อเพิ่ม schema และรหัสประจำตัวที่ขาดอยู่ คำสั่งนี้ต้องรันหลังอัปเดตโค้ดทุกครั้งที่มี migration ใหม่ สำหรับ Production ผู้ดูแลเริ่มต้นใช้ชื่อผู้ใช้ `physicshouse` และรหัสที่เจ้าของร้านให้ไว้ก่อนหน้านี้ ให้กรอกใน prompt ที่ไม่แสดงตัวอักษร ไม่เขียนลงเอกสารหรือ environment variable ระบบเก็บเฉพาะ scrypt hash ของรหัสนี้และไม่ได้บังคับเปลี่ยนรหัสเมื่อเข้าครั้งแรกตามที่เจ้าของร้านกำหนด สำหรับ Preview ให้ใช้รหัสทดสอบที่ต่างจาก Production คำสั่ง bootstrap สร้างผู้ดูแลเริ่มต้นได้ครั้งเดียวเมื่อยังไม่มีผู้ดูแล
+รัน migration และ bootstrap **จากเครื่องที่เชื่อถือได้** หลังยืนยันว่าโค้ดและไดรเวอร์ Python เชื่อมฐานข้อมูล libSQL ของ Marketplace ได้จริง แยกครั้งละฐานข้อมูล: เริ่มที่ Preview เพื่อทดสอบก่อน แล้วจึง Production โดยใช้ URL/token ตรงกับ environment ของ Vercel แต่ละชุด การเชื่อมฐานข้อมูล Production กับโปรเจกต์แล้ว **ไม่ได้หมายความว่า** `manage.py init` หรือ `bootstrap-admin` ได้รันแล้ว หากฐานข้อมูลมีข้อมูลจากรุ่นก่อน ให้สำรองและทดสอบกู้คืนก่อนรัน `manage.py init` เพื่อเพิ่ม schema และรหัสประจำตัวที่ขาดอยู่ คำสั่งนี้ต้องรันหลังอัปเดตโค้ดทุกครั้งที่มี migration ใหม่ สำหรับ Production ผู้ดูแลเริ่มต้นใช้ชื่อผู้ใช้ `physicshouse` และรหัสที่เจ้าของร้านให้ไว้ก่อนหน้านี้ ให้กรอกใน prompt ที่ไม่แสดงตัวอักษร ไม่เขียนลงเอกสารหรือ environment variable ระบบเก็บเฉพาะ scrypt hash ของรหัสนี้และไม่ได้บังคับเปลี่ยนรหัสเมื่อเข้าครั้งแรกตามที่เจ้าของร้านกำหนด สำหรับ Preview ให้ใช้รหัสทดสอบที่ต่างจาก Production คำสั่ง bootstrap สร้างผู้ดูแลเริ่มต้นได้ครั้งเดียวเมื่อยังไม่มีผู้ดูแล
 
 วิธีส่ง URL และ token ให้คำสั่งเฉพาะครั้งโดยไม่บันทึก token ลงไฟล์หรือประวัติ shell:
 
@@ -136,4 +127,4 @@ vercel rollback
 
 ปัจจุบันผู้ดูแลส่งออกรายงาน CSV เพื่อ **นำเข้า Google Sheet ด้วยมือ** ได้ แต่ยังไม่มีการซิงก์ Sheet อัตโนมัติ อีเมลแจ้งเตือนจะเริ่มทำงานต่อเมื่อกำหนดผู้ให้บริการและโดเมนผู้ส่งครบ และการที่ผู้ให้บริการรับอีเมลแล้วไม่ได้รับประกันว่าจะเข้ากล่อง Gmail การยืนยันอีเมล, MFA, ระบบส่งรหัสชั่วคราวที่ปลอดภัย และนโยบายเก็บ/ลบข้อมูลเด็กยังต้องดำเนินการก่อนเปิดรับข้อมูลจริง ไม่ควรถือว่าเสร็จเพียงเพราะ Vercel deployment แสดงสถานะ Ready
 
-อ้างอิง: [Flask on Vercel](https://vercel.com/docs/frameworks/backend/flask), [Vercel deployment และ promote](https://vercel.com/docs/cli/deploying-from-cli), [Vercel rollback](https://vercel.com/docs/cli/rollback), [Turso Quickstart](https://github.com/tursodatabase/turso-docs/blob/main/quickstart.mdx), [Turso Python remote driver](https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx)
+อ้างอิง: [Flask on Vercel](https://vercel.com/docs/frameworks/backend/flask), [Vercel Marketplace Storage](https://vercel.com/docs/marketplace-storage), [Turso Cloud บน Vercel Marketplace](https://vercel.com/marketplace/tursocloud), [Vercel deployment และ promote](https://vercel.com/docs/cli/deploying-from-cli), [Vercel rollback](https://vercel.com/docs/cli/rollback), [Turso Python remote driver](https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx)
