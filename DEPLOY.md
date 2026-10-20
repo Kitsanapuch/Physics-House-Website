@@ -2,7 +2,7 @@
 
 แพ็กเกจนี้จัดหน้า login และไฟล์ภาพ/สไตล์ไว้ใน `public/` ส่วน `private/dashboard.html` ให้ Flask ที่ `app.py` ระดับรากโปรเจกต์ตรวจเซสชันก่อนส่งหน้า ข้อมูลบัญชี นักเรียน การเงิน และค่าจ้างอยู่ในฐานข้อมูล Turso ระยะไกล ไม่ใช้ไฟล์ SQLite ใน Vercel ไฟล์ในแพ็กเกจไม่มีฐานข้อมูลจริงหรือรหัสผ่าน
 
-**สถานะ:** มีฐานข้อมูล Turso Cloud แผน Starter จาก Vercel Marketplace เชื่อมกับ environment **Production** ของโปรเจกต์แล้ว โดย integration ให้ตัวแปร `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` เป็นค่า Sensitive ทั้งคู่ ฐานข้อมูลนี้ใช้ URL แบบ libSQL (`libsql://...`) งานปรับและทดสอบไดรเวอร์ Python ให้เข้ากับฐานข้อมูลนี้ยังดำเนินอยู่ การเชื่อมทรัพยากรไม่ได้ยืนยันว่ามี schema, ผู้ดูแล หรือ deployment ที่ใช้งานได้ ก่อนรับข้อมูลเด็กจริงต้องผ่านขั้นตอนเริ่มต้นฐานข้อมูล การทดสอบ และการตรวจการตั้งค่าความปลอดภัยหลัง deploy
+**สถานะ ณ 20 ต.ค. 2026:** ฐานข้อมูล Turso Cloud แผน Starter เชื่อมกับ environment **Production** ของโปรเจกต์แล้ว โดย integration ให้ `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` เป็นค่า Sensitive ทั้งคู่ ฐานข้อมูลใช้ URL แบบ libSQL (`libsql://...`) และโค้ดรองรับด้วย `libsql` บน Python การรัน `manage.py init` และ `manage.py check` กับฐานจริงผ่านแล้ว: schema พร้อม, ผู้ดูแลที่ active 1 บัญชี, และเรทกลางตรง 8 ช่วง Production deployment ผ่านการตรวจ `/api/health`, การล็อกอินผู้ดูแล, หน้าแดชบอร์ดที่ป้องกันไว้ และการออกจากระบบ ส่วนฐาน Preview แยก, อีเมลผู้ส่ง, การซิงก์ Google Sheet อัตโนมัติ, การยืนยันอีเมล, MFA และนโยบายข้อมูลเด็กยังไม่ครบ จึงไม่ควรถือว่าระบบพร้อมรับข้อมูลนักเรียนจริงทุกกรณี
 
 ## 1. เตรียมบัญชีและฐานข้อมูล
 
@@ -85,7 +85,7 @@ PY
 รันชุดทดสอบ offline ก่อน ชุดนี้ใช้ SQLite จำลอง transport จึงยังไม่พิสูจน์การเชื่อม Turso จริง แล้วสร้าง Preview deployment:
 
 ```bash
-python3 -m unittest -v test_package.py test_notifications.py test_mailer.py
+python3 -m unittest discover -v
 vercel deploy
 ```
 
