@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10110f">
+  <title>Physics House — เข้าสู่พื้นที่การเรียนรู้</title>
+  <link rel="icon" href="physics-house-logo-yellow-black.png">
+  <link rel="stylesheet" href="portal.css?v=9">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><span>E = mc²</span><span>F = ma</span><span>∫ x dx</span></div>
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Physics House หน้าแรก"><img src="physics-house-logo-yellow-black.png" alt="โลโก้ Physics House"><span>Physics House<span class="brand-dot">.</span></span></a>
+    <nav aria-label="เมนูหลัก"><span class="nav-current">พื้นที่การเรียนรู้</span><button id="about-button" type="button">เกี่ยวกับเรา</button></nav>
+  </header>
+  <main class="portal-layout">
+    <section class="story" aria-labelledby="hero-title">
+      <div class="story-top"><span class="mini-line"></span><span>PHYSICS HOUSE · LEARNING SPACE</span></div>
+      <h1 id="hero-title">เรียนให้เข้าใจ<br><span>ไปได้ไกลกว่าเดิม<span class="dot">.</span></span></h1>
+      <p>พื้นที่เรียนรู้สำหรับนักเรียนมัธยม ครบทั้งฟิสิกส์ เคมี ชีวะ คณิตศาสตร์ และวิชาทั่วไป</p>
+      <div class="subjects" role="group" aria-label="สำรวจกลุ่มวิชาที่สอน"><button type="button" class="active" data-subject="physics" aria-pressed="true">ฟิสิกส์</button><button type="button" data-subject="chemistry" aria-pressed="false">เคมี</button><button type="button" data-subject="biology" aria-pressed="false">ชีวะ</button><button type="button" data-subject="math" aria-pressed="false">คณิตศาสตร์</button><button type="button" data-subject="general" aria-pressed="false">ภาษาอังกฤษ</button></div>
+      <div class="subject-display" aria-live="polite">
+        <div class="subject-display-copy"><span class="subject-kicker">สำรวจวิชาของเรา <span class="subject-number" id="subject-number">01 / 05</span></span><h2 id="subject-title">ฟิสิกส์</h2><p id="subject-description">เข้าใจแรง การเคลื่อนที่ และพลังงานผ่านโจทย์ที่เห็นภาพ</p></div>
+        <div class="subject-visual" aria-hidden="true"><span class="subject-orbit"></span><strong id="subject-formula">F = ma</strong></div>
+      </div>
+      <button class="motion-control" id="motion-control" type="button" aria-pressed="false" aria-label="หยุดภาพเคลื่อนไหว"><span class="motion-icon" aria-hidden="true">Ⅱ</span><span class="motion-label">หยุดภาพเคลื่อนไหว</span></button>
+    </section>
+    <section class="auth-card" aria-labelledby="auth-title">
+      <div class="card-top"><span class="tiny-mark" aria-hidden="true">PH</span><span class="card-status"><i></i> พื้นที่สำหรับนักเรียนและทีมสอน</span></div>
+      <div class="auth-heading"><p class="eyebrow" id="auth-eyebrow">WELCOME BACK</p><h2 id="auth-title">เข้าสู่ระบบ</h2><p id="auth-subtitle">กรอกบัญชีของคุณเพื่อไปยังหน้าที่ตรงกับสิทธิ์โดยอัตโนมัติ</p></div>
+      <div class="auth-tabs" role="tablist" aria-label="เข้าสู่ระบบหรือสมัครสมาชิก"><button id="login-tab" role="tab" aria-selected="true" aria-controls="auth-panel" class="selected">เข้าสู่ระบบ</button><button id="register-tab" role="tab" aria-selected="false" aria-controls="auth-panel" tabindex="-1">สมัครสมาชิกนักเรียน</button></div>
+      <div id="auth-panel" role="tabpanel" aria-labelledby="login-tab">
+        <p class="role-auto">ไม่ต้องเลือกประเภทบัญชี ระบบจะเปิดหน้าของคุณหลังเข้าสู่ระบบ</p>
+        <div class="sample-form" aria-label="ฟอร์มเข้าสู่ระบบและสมัครนักเรียน">
+          <div id="name-row" hidden><label for="full-name">ชื่อ–นามสกุลนักเรียน</label><input id="full-name" placeholder="ชื่อและนามสกุล" autocomplete="name" maxlength="120" disabled></div>
+          <div id="profile-fields" class="profile-fields" hidden>
+            <label for="student-grade">ระดับชั้น</label><select id="student-grade" disabled><option value="">เลือกระดับชั้น</option><option value="M1">ม.1</option><option value="M2">ม.2</option><option value="M3">ม.3</option><option value="M4">ม.4</option><option value="M5">ม.5</option><option value="M6">ม.6</option></select>
+            <label for="student-school">โรงเรียน</label><input id="student-school" placeholder="ชื่อโรงเรียน" maxlength="150" disabled>
+            <label for="guardian-name">ชื่อ–นามสกุลผู้ปกครอง</label><input id="guardian-name" placeholder="ชื่อผู้ปกครอง" maxlength="120" disabled>
+            <label for="guardian-phone">เบอร์โทรศัพท์ผู้ปกครอง</label><input id="guardian-phone" type="tel" inputmode="tel" placeholder="08xxxxxxxx" maxlength="24" disabled>
+            <label for="guardian-relationship">ความสัมพันธ์</label><select id="guardian-relationship" disabled><option value="">เลือกความสัมพันธ์</option><option value="father">บิดา</option><option value="mother">มารดา</option><option value="guardian">ผู้ปกครอง</option><option value="other">อื่น ๆ</option></select>
+          </div>
+          <label id="identifier-label" for="email">อีเมลหรือชื่อผู้ใช้</label><div class="field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/></svg><input id="email" type="text" placeholder="อีเมลหรือชื่อผู้ใช้" disabled autocomplete="username"></div>
+          <div class="password-label"><label for="password">รหัสผ่าน</label><span id="password-hint">รหัสผ่านบัญชีของคุณ</span></div><div class="field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="password" type="password" placeholder="••••••••" disabled autocomplete="current-password"><button id="password-toggle" class="password-toggle" type="button" aria-label="แสดงรหัสผ่าน" aria-controls="password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.7-6 10-6 10 6 10 6-3.7 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="eye-slash" d="M3 3 21 21"/></svg></button></div>
+        </div>
+        <button id="enter-demo" class="enter-button" type="button" disabled><span id="entry-label">กำลังเชื่อมต่อระบบ…</span><span aria-hidden="true">→</span></button>
+        <p class="prototype-note">กรุณารอสักครู่</p><p id="auth-feedback" class="auth-feedback" role="status" aria-live="polite"></p>
+      </div>
+      <div class="card-footer"><span class="footer-line"></span><span>PHYSICS HOUSE</span><span class="footer-line"></span></div>
+    </section>
+  </main>
+  <dialog id="info"><button class="close" aria-label="ปิด">×</button><p class="eyebrow">PHYSICS HOUSE</p><h2 id="info-title">พื้นที่เรียนรู้สำหรับเด็กมัธยม</h2><p id="info-text"></p><button class="dialog-primary">เข้าใจแล้ว</button></dialog>
+<script>
+const d=document, tabs=[d.getElementById('login-tab'),d.getElementById('register-tab')];
+let liveAuth=false;
+const subjectContent={physics:{number:'01 / 05',title:'ฟิสิกส์',description:'เข้าใจแรง การเคลื่อนที่ และพลังงานผ่านโจทย์ที่เห็นภาพ',formula:'F = ma'},chemistry:{number:'02 / 05',title:'เคมี',description:'เชื่อมสูตรกับภาพของสารและปฏิกิริยา เพื่อแก้โจทย์อย่างมั่นใจ',formula:'H₂O'},biology:{number:'03 / 05',title:'ชีวะ',description:'มองเห็นความสัมพันธ์ของเซลล์ ระบบร่างกาย และสิ่งมีชีวิต',formula:'DNA'},math:{number:'04 / 05',title:'คณิตศาสตร์',description:'เข้าใจวิธีคิดทีละขั้น ก่อนลงมือฝึกโจทย์ด้วยตัวเอง',formula:'∫ x dx'},general:{number:'05 / 05',title:'ภาษาอังกฤษ',description:'ฝึกอ่าน เขียน และสื่อสารอย่างมั่นใจ พร้อมใช้สอบในระดับมัธยม',formula:'A → Z'}};
+function setSubject(key){const content=subjectContent[key];if(!content)return;for(const button of d.querySelectorAll('[data-subject]')){const active=button.dataset.subject===key;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))}d.getElementById('subject-number').textContent=content.number;d.getElementById('subject-title').textContent=content.title;d.getElementById('subject-description').textContent=content.description;d.getElementById('subject-formula').textContent=content.formula}
+d.querySelectorAll('[data-subject]').forEach(button=>button.addEventListener('click',()=>setSubject(button.dataset.subject)));
+const motionButton=d.getElementById('motion-control');let motionPaused=false;
+function setMotionPaused(paused){motionPaused=paused;d.documentElement.classList.toggle('motion-paused',paused);motionButton.setAttribute('aria-pressed',String(paused));motionButton.setAttribute('aria-label',paused?'เริ่มภาพเคลื่อนไหว':'หยุดภาพเคลื่อนไหว');motionButton.querySelector('.motion-icon').textContent=paused?'▶':'Ⅱ';motionButton.querySelector('.motion-label').textContent=paused?'เริ่มภาพเคลื่อนไหว':'หยุดภาพเคลื่อนไหว'}
+motionButton.addEventListener('click',()=>setMotionPaused(!motionPaused));
+function registerMode(){return tabs[1].getAttribute('aria-selected')==='true'}
+function selectTab(register){
+  tabs.forEach((t,i)=>{const on=i===Number(register);t.classList.toggle('selected',on);t.setAttribute('aria-selected',String(on));t.tabIndex=on?0:-1});
+  d.getElementById('auth-panel').setAttribute('aria-labelledby',register?'register-tab':'login-tab');
+  d.getElementById('auth-title').textContent=register?'สมัครสมาชิกนักเรียน':'เข้าสู่ระบบ';
+  d.getElementById('auth-subtitle').textContent=register?'กรอกข้อมูลนักเรียนและผู้ปกครองเพื่อเริ่มต้นใช้งาน':'กรอกบัญชีของคุณเพื่อไปยังหน้าที่ตรงกับสิทธิ์โดยอัตโนมัติ';
+  d.getElementById('auth-eyebrow').textContent=register?'START LEARNING':'WELCOME BACK';
+  d.getElementById('name-row').hidden=!register;
+  d.getElementById('profile-fields').hidden=!register;
+  for(const el of d.querySelectorAll('#profile-fields input,#profile-fields select'))el.disabled=!register||!liveAuth;
+  d.getElementById('full-name').disabled=!register||!liveAuth;
+  const identifier=d.getElementById('email');identifier.type=register?'email':'text';identifier.placeholder=register?'yourname@email.com':'อีเมลหรือชื่อผู้ใช้';identifier.autocomplete=register?'email':'username';
+  d.getElementById('identifier-label').textContent=register?'อีเมลนักเรียน':'อีเมลหรือชื่อผู้ใช้';
+  d.getElementById('password-hint').textContent=register?'อย่างน้อย 12 ตัวอักษร':'รหัสผ่านบัญชีของคุณ';
+  d.getElementById('password').autocomplete=register?'new-password':'current-password';
+  setPasswordVisibility(false);authModeLabel();
+}
+function setPasswordVisibility(shown){const input=d.getElementById('password'),button=d.getElementById('password-toggle');input.type=shown?'text':'password';button.setAttribute('aria-label',shown?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน');button.setAttribute('aria-pressed',String(shown))}
+d.getElementById('password-toggle').addEventListener('click',()=>setPasswordVisibility(d.getElementById('password').type==='password'));
+tabs.forEach((b,i)=>{b.onclick=()=>selectTab(Boolean(i));b.onkeydown=e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const next=1-i;selectTab(Boolean(next));tabs[next].focus()}}});
+const modal=d.getElementById('info');function info(title,message){d.getElementById('info-title').textContent=title;d.getElementById('info-text').textContent=message;modal.showModal()}
+d.getElementById('about-button').onclick=()=>info('พื้นที่เรียนรู้สำหรับเด็กมัธยม','Physics House สอนวิชาทั่วไป โดยเน้นนักเรียนระดับมัธยม นักเรียนสมัครบัญชีและสมัครเรียนได้ในระบบ ส่วนครูและผู้ดูแลใช้บัญชีที่สถาบันจัดให้');modal.querySelector('.close').onclick=()=>modal.close();modal.querySelector('.dialog-primary').onclick=()=>modal.close();
+const authButton=d.getElementById('enter-demo'),feedback=d.getElementById('auth-feedback');
+function authModeLabel(){if(liveAuth)d.getElementById('entry-label').textContent=registerMode()?'สร้างบัญชีนักเรียน':'เข้าสู่ระบบ'}
+async function activateLiveLogin(){try{
+  const r=await fetch('/api/me',{credentials:'same-origin',cache:'no-store'});if(!r.ok)throw new Error('api unavailable');const state=await r.json();if(!('authenticated' in state))throw new Error('api unavailable');
+  liveAuth=true;if(state.authenticated){location.replace('dashboard.html');return}
+  for(const el of ['email','password'])d.getElementById(el).disabled=false;selectTab(registerMode());
+  d.querySelector('.prototype-note').textContent='นักเรียนสมัครได้เอง · ครูและผู้ดูแลใช้บัญชีที่สถาบันจัดให้';authButton.disabled=false;authButton.addEventListener('click',submitAuth);
+  d.querySelectorAll('#email,#password,#full-name,#profile-fields input,#profile-fields select').forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth(e)}));
+}catch{d.querySelector('.prototype-note').textContent='ติดต่อระบบไม่ได้ กรุณาลองใหม่ภายหลัง';d.getElementById('entry-label').textContent='ระบบยังไม่พร้อม';authButton.disabled=true}}
+async function submitAuth(e){if(!liveAuth)return;e.preventDefault();const register=registerMode();const login=d.getElementById('email').value.trim();const password=d.getElementById('password').value;const name=d.getElementById('full-name').value.trim();
+  const profile={grade:d.getElementById('student-grade').value,school:d.getElementById('student-school').value.trim(),guardian_name:d.getElementById('guardian-name').value.trim(),guardian_phone:d.getElementById('guardian-phone').value.trim(),guardian_relationship:d.getElementById('guardian-relationship').value};
+  if(!login||!password||(register&&(!name||Object.values(profile).some(v=>!v)))){feedback.textContent='กรุณากรอกข้อมูลให้ครบ';return}
+  if(register&&!d.getElementById('email').checkValidity()){feedback.textContent='กรุณากรอกอีเมลที่ถูกต้อง';return}
+  if(register&&password.length<12){feedback.textContent='รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร';return}
+  authButton.disabled=true;feedback.textContent=register?'กำลังสร้างบัญชี…':'กำลังเข้าสู่ระบบ…';
+  try{const r=await fetch(register?'/api/auth/register':'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(register?{name,email:login,password,...profile}:{login,password})});const body=await r.json();if(!r.ok||!body.authenticated){feedback.textContent=body.error?.message||'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจข้อมูลแล้วลองใหม่';return}location.assign('dashboard.html')}
+  catch{feedback.textContent='ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองอีกครั้ง'}finally{authButton.disabled=false}
+}
+activateLiveLogin();
+</script>
+</body>
+</html>

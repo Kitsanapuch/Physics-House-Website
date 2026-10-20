@@ -1,0 +1,248 @@
+"""Remote, transactional Turso storage for the Physics House API.
+
+Turso's serverless DB-API driver holds a stream baton for the lifetime of a
+connection. Keeping one connection open for each API request preserves the
+explicit BEGIN IMMEDIATE / COMMIT boundaries in backend.PhysicsHouseApp.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import turso_serverless
+
+from backend import (
+    COURSE_CATALOG,
+    PhysicsHouseApp,
+    RATE_GRID,
+    RATE_GRID_EFFECTIVE_FROM,
+    RATE_GRID_MIGRATION,
+    Response,
+    SCHEMA,
+    fail,
+    migrate_outbox_schema,
+    migrate_academic_schema,
+    now,
+    uid,
+)
+
+
+THROTTLE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS login_throttle (
+  key_hash TEXT PRIMARY KEY,
+  window_started INTEGER NOT NULL,
+  attempts INTEGER NOT NULL CHECK(attempts >= 0)
+);
+"""
+
+
+class ClosingRemoteConnection:
+    """Context manager with sqlite3-style commit/rollback and actual close."""
+
+    def __init__(self, connection: turso_serverless.Connection) -> None:
+        self._connection = connection
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
+
+    def __enter__(self) -> ClosingRemoteConnection:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        try:
+            if exc_type is None:
+                self._connection.commit()
+            else:
+                self._connection.rollback()
+        finally:
+            self._connection.close()
+        return False
+
+
+class PersistentRateLimiter:
+    """Share authentication attempt limits across Vercel function instances."""
+
+    def __init__(self, owner: RemotePhysicsHouseApp) -> None:
+        self.owner = owner
+
+    def check(self, key: str, limit: int, period: int) -> None:
+        if limit < 1 or period < 1:
+            raise ValueError("invalid rate limit")
+        digest = hmac.new(
+            self.owner.auth_token.encode("utf-8"), key.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        current = now()
+        with self.owner.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            # Periodic bounded cleanup keeps this table from growing forever.
+            # Authentication still works if no cleanup is due in this request.
+            if current % 97 == 0:
+                conn.execute("DELETE FROM login_throttle WHERE window_started < ?", (current - 24 * 3600,))
+            row = conn.execute(
+                "SELECT window_started,attempts FROM login_throttle WHERE key_hash=?",
+                (digest,),
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "INSERT INTO login_throttle(key_hash,window_started,attempts) VALUES(?,?,1)",
+                    (digest, current),
+                )
+            elif row["window_started"] <= current - period:
+                conn.execute(
+                    "UPDATE login_throttle SET window_started=?, attempts=1 WHERE key_hash=?",
+                    (current, digest),
+                )
+            elif row["attempts"] >= limit:
+                fail(429, "rate_limited", "Too many attempts; try again later")
+            else:
+                conn.execute(
+                    "UPDATE login_throttle SET attempts=attempts+1 WHERE key_hash=?",
+                    (digest,),
+                )
+            conn.commit()
+
+
+class RemotePhysicsHouseApp(PhysicsHouseApp):
+    def __init__(
+        self,
+        database_url: str,
+        auth_token: str,
+        origin: str,
+        extra_origins: set[str] | None = None,
+    ) -> None:
+        parsed = urlsplit(database_url)
+        if parsed.scheme != "turso" or not parsed.hostname:
+            raise ValueError("TURSO_DATABASE_URL must point to a new-engine turso:// database")
+        if parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+            raise ValueError("TURSO_DATABASE_URL must not contain credentials or query text")
+        if not auth_token.strip():
+            raise ValueError("TURSO_AUTH_TOKEN is required")
+        self.database_url = database_url.rstrip("/")
+        self.auth_token = auth_token
+        # The inherited constructor's migration hook is deliberately a no-op.
+        # Remote migrations are an explicit management step, never a side
+        # effect of a Vercel cold start.
+        super().__init__(Path("/__remote_turso__"), origin, None)
+        for extra in extra_origins or set():
+            parsed_origin = urlsplit(extra)
+            if parsed_origin.scheme != "https" or not parsed_origin.netloc or parsed_origin.path or parsed_origin.query or parsed_origin.fragment:
+                raise ValueError("Additional public origins must be exact HTTPS origins")
+            self.allowed_origins.add(extra.rstrip("/"))
+        self.limiter = PersistentRateLimiter(self)
+
+    def _init_db(self) -> None:
+        pass
+
+    def connect(self) -> ClosingRemoteConnection:
+        connection = turso_serverless.connect(
+            self.database_url,
+            auth_token=self.auth_token,
+            isolation_level=None,
+        )
+        try:
+            connection.row_factory = turso_serverless.Row
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=30000")
+            enabled = connection.execute("PRAGMA foreign_keys").fetchone()
+            if enabled is None or enabled[0] != 1:
+                raise RuntimeError("Remote database must enforce foreign keys")
+            return ClosingRemoteConnection(connection)
+        except BaseException:
+            connection.close()
+            raise
+
+    def initialize_remote(self) -> None:
+        """Run idempotent schema/rate initialization from a trusted CLI."""
+        with self.connect() as conn:
+            conn.executescript(SCHEMA + THROTTLE_SCHEMA)
+            migrate_outbox_schema(conn)
+            migrate_academic_schema(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            if not conn.execute(
+                "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
+            ).fetchone():
+                conn.execute(
+                    "DELETE FROM rate_rules WHERE state='pending_confirmation' "
+                    "AND teacher_id IS NULL AND source_note LIKE 'Inferred hourly rate%'"
+                )
+                conn.executemany(
+                    "INSERT INTO rate_rules(id,teacher_label,subject,level,min_students,max_students,"
+                    "rate_satang_per_hour,effective_from,state,source_note,confirmed_at) "
+                    "VALUES(?,'อัตรากลาง','all',?,?,?,?,?,'confirmed',?,?)",
+                    [
+                        (uid(), level, low, high, amount, RATE_GRID_EFFECTIVE_FROM, note, now())
+                        for level, low, high, amount, note in RATE_GRID
+                    ],
+                )
+                conn.execute(
+                    "INSERT INTO app_migrations(key,applied_at) VALUES(?,?)",
+                    (RATE_GRID_MIGRATION, now()),
+                )
+                self.audit(
+                    conn,
+                    None,
+                    "rate_schedule",
+                    RATE_GRID_MIGRATION,
+                    "activate_owner_grid",
+                    {"effective_from": RATE_GRID_EFFECTIVE_FROM, "tiers": len(RATE_GRID)},
+                )
+            conn.commit()
+
+    def check_remote(self) -> dict:
+        """Read-only deployment readiness check for the management CLI."""
+        with self.connect() as conn:
+            marker = conn.execute(
+                "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
+            ).fetchone()
+            admin_count = conn.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
+            confirmed_rates = conn.execute(
+                "SELECT COUNT(*) FROM rate_rules WHERE teacher_id IS NULL AND state='confirmed' "
+                "AND effective_from=?",
+                (RATE_GRID_EFFECTIVE_FROM,),
+            ).fetchone()[0]
+            throttle_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='login_throttle'"
+            ).fetchone()
+            outbox_columns = {row[1] for row in conn.execute("PRAGMA table_info(notification_outbox)").fetchall()}
+            user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+            course_columns = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
+            class_columns = {row[1] for row in conn.execute("PRAGMA table_info(class_sessions)").fetchall()}
+            clauses = " OR ".join("(level=? AND subject=? AND price_satang=?)" for _ in COURSE_CATALOG)
+            catalog_args = tuple(value for (level, subject), (_, _, price) in COURSE_CATALOG.items()
+                                 for value in (level, subject, price))
+            invalid_active = conn.execute(
+                "SELECT COUNT(*) FROM courses WHERE active=1 AND NOT (" + clauses + ")", catalog_args
+            ).fetchone()[0]
+            missing_codes = conn.execute(
+                "SELECT (SELECT COUNT(*) FROM users WHERE role IN ('student','teacher') AND public_code IS NULL)"
+                "+(SELECT COUNT(*) FROM courses WHERE course_code IS NULL OR subject_code IS NULL)"
+                "+(SELECT COUNT(*) FROM class_sessions WHERE teacher_id IS NULL OR room_name IS NULL)"
+            ).fetchone()[0]
+            return {
+                "schema_initialized": bool(marker) and bool(throttle_table) and
+                                      {"id", "first_attempt_at", "lease_token"}.issubset(outbox_columns) and
+                                      {"public_code"}.issubset(user_columns) and
+                                      {"course_code", "subject_code"}.issubset(course_columns) and
+                                      {"room_name", "teacher_id"}.issubset(class_columns) and
+                                      len(COURSE_CATALOG) == 8 and invalid_active == 0 and missing_codes == 0,
+                "admin_count": admin_count,
+                "confirmed_default_rate_count": confirmed_rates,
+                "catalog_offering_count": len(COURSE_CATALOG),
+                "invalid_active_course_count": invalid_active,
+                "missing_public_code_count": missing_codes,
+            }
+
+    def handle(self, method: str, target: str, data: dict | None, headers: dict[str, str], client_ip: str) -> Response:
+        try:
+            result = super().handle(method, target, data, headers, client_ip)
+            if method == "GET" and target.split("?", 1)[0] == "/api/health" and result.status == 200:
+                with self.connect() as conn:
+                    conn.execute("SELECT 1").fetchone()
+                return Response(200, {"ok": True, "database": "turso"})
+            return result
+        except turso_serverless.IntegrityError:
+            return Response(409, {"error": {"code": "conflict", "message": "The requested change conflicts with existing data"}})
+
