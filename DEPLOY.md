@@ -23,7 +23,7 @@ turso db show --url physics-house-preview
 
 ## 2. ผูกโปรเจกต์ Vercel และตั้งค่าลับ
 
-สร้างโปรเจกต์ Vercel สำหรับร้าน และกำหนด **Root Directory** เป็นโฟลเดอร์ `physics-house-vercel` นี้ หากนำทั้งโฟลเดอร์ไปเป็น repository เดี่ยว ให้ใช้ root ของ repository นั้น จากนั้นรันจากโฟลเดอร์แพ็กเกจ:
+สร้างโปรเจกต์ Vercel สำหรับร้าน โดยให้ **Root Directory** ชี้ไปยังโฟลเดอร์ที่มี `app.py`, `requirements.txt` และ `vercel.json` สำหรับ repository `Physics-House-Website` ไฟล์เหล่านี้อยู่ที่ราก repository จึงให้เว้นค่า Root Directory ว่าง (หรือใช้ `.`) หากนำโฟลเดอร์ `physics-house-vercel` ไปไว้ภายใน repository อื่น จึงตั้ง Root Directory เป็นชื่อโฟลเดอร์นั้น จากนั้นรันจากโฟลเดอร์โปรเจกต์:
 
 ```bash
 vercel whoami
