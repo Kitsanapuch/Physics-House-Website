@@ -2,10 +2,13 @@
 
 import json
 import os
+import smtplib
+import ssl
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from mailer import send_update_email
+import app as site
+from mailer import delivery_configured, send_update_email
 
 
 class _Response:
@@ -39,19 +42,56 @@ class _Connection:
         pass
 
 
+class _SMTP:
+    instances = []
+    error_on_login = None
+    error_on_send = None
+    refused = {}
+
+    def __init__(self, host, port, timeout, context):
+        self.host, self.port, self.timeout, self.context = host, port, timeout, context
+        self.login_args = None
+        self.message = None
+        self.closed = False
+        self.instances.append(self)
+
+    def login(self, username, password):
+        self.login_args = (username, password)
+        if self.error_on_login:
+            raise self.error_on_login
+
+    def send_message(self, message, *, from_addr, to_addrs):
+        self.message = message
+        self.from_addr, self.to_addrs = from_addr, to_addrs
+        if self.error_on_send:
+            raise self.error_on_send
+        return self.refused
+
+    def close(self):
+        self.closed = True
+
+
 class MailerTests(unittest.TestCase):
     def setUp(self):
         _Connection.responses = []
         _Connection.requests = []
+        _SMTP.instances = []
+        _SMTP.error_on_login = None
+        _SMTP.error_on_send = None
+        _SMTP.refused = {}
         self.settings = patch.dict(
             os.environ,
-            {"RESEND_API_KEY": "re_test_validtoken", "PH_EMAIL_FROM": "updates@example.com"},
+            {"RESEND_API_KEY": "re_test_validtoken", "PH_EMAIL_FROM": "updates@example.com",
+             "PH_GMAIL_USER": "", "PH_GMAIL_APP_PASSWORD": ""},
         )
         self.transport = patch("mailer.http.client.HTTPSConnection", _Connection)
+        self.gmail_transport = patch("mailer.smtplib.SMTP_SSL", _SMTP)
         self.settings.start()
         self.transport.start()
+        self.gmail_transport.start()
         self.addCleanup(self.settings.stop)
         self.addCleanup(self.transport.stop)
+        self.addCleanup(self.gmail_transport.stop)
 
     def test_accepted_mail_contains_only_generic_update_and_stable_key(self):
         _Connection.responses = [_Response(200, b'{"id":"email_1"}'), _Response(200, b'{"id":"email_1"}')]
@@ -82,6 +122,98 @@ class MailerTests(unittest.TestCase):
         with patch.dict(os.environ, {"RESEND_API_KEY": ""}):
             self.assertEqual(send_update_email("student@gmail.com", event_id="x").code, "not_configured")
         self.assertEqual(_Connection.requests, [])
+        self.assertEqual(_SMTP.instances, [])
+
+    def test_gmail_takes_priority_and_uses_verified_tls_with_generic_message(self):
+        with patch.dict(os.environ, {
+            "PH_GMAIL_USER": "physics.house@gmail.com",
+            "PH_GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop",
+        }):
+            self.assertTrue(delivery_configured())
+            result = send_update_email("student@gmail.com", event_id="invoice-123")
+        self.assertTrue(result.sent)
+        self.assertEqual(result.code, "accepted")
+        self.assertIsNone(result.provider_id)
+        self.assertEqual(_Connection.requests, [])
+        self.assertEqual(len(_SMTP.instances), 1)
+        smtp = _SMTP.instances[0]
+        self.assertEqual((smtp.host, smtp.port, smtp.timeout), ("smtp.gmail.com", 465, 5.0))
+        self.assertEqual(smtp.context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(smtp.context.check_hostname)
+        self.assertEqual(smtp.login_args, ("physics.house@gmail.com", "abcdefghijklmnop"))
+        self.assertEqual((smtp.from_addr, smtp.to_addrs), ("physics.house@gmail.com", ["student@gmail.com"]))
+        self.assertEqual(smtp.message["From"], "physics.house@gmail.com")
+        self.assertEqual(smtp.message["To"], "student@gmail.com")
+        self.assertNotIn("invoice-123", smtp.message.get_content())
+        self.assertNotIn("student@gmail.com", smtp.message.get_content())
+        self.assertTrue(smtp.closed)
+        self.assertNotIn("abcdefghijklmnop", str(result))
+
+    def test_gmail_auth_and_provider_errors_are_private_and_classified(self):
+        with patch.dict(os.environ, {
+            "PH_GMAIL_USER": "physics.house@gmail.com",
+            "PH_GMAIL_APP_PASSWORD": "abcdefghijklmnop",
+        }):
+            _SMTP.error_on_login = smtplib.SMTPAuthenticationError(535, b"private auth detail")
+            invalid = send_update_email("student@gmail.com", event_id="event-1")
+            self.assertEqual(invalid.code, "invalid_configuration")
+            self.assertFalse(invalid.retryable)
+            self.assertNotIn("private", str(invalid))
+            self.assertTrue(_SMTP.instances[-1].closed)
+
+            _SMTP.error_on_login = smtplib.SMTPAuthenticationError(454, b"private temporary auth detail")
+            temporary_auth = send_update_email("student@gmail.com", event_id="event-1b")
+            self.assertEqual((temporary_auth.code, temporary_auth.retryable, temporary_auth.status),
+                             ("temporary_failure", True, 454))
+
+            _SMTP.error_on_login = None
+            _SMTP.error_on_send = smtplib.SMTPDataError(421, b"private transient detail")
+            transient = send_update_email("student@gmail.com", event_id="event-2")
+            self.assertEqual((transient.code, transient.retryable, transient.status),
+                             ("temporary_failure", True, 421))
+            self.assertNotIn("private", str(transient))
+
+            _SMTP.error_on_send = smtplib.SMTPDataError(550, b"private rejection detail")
+            rejected = send_update_email("student@gmail.com", event_id="event-3")
+            self.assertEqual((rejected.code, rejected.retryable, rejected.status),
+                             ("provider_rejected", False, 550))
+            self.assertNotIn("private", str(rejected))
+
+            _SMTP.error_on_send = None
+            _SMTP.refused = {"student@gmail.com": (450, b"private temporary refusal")}
+            refused = send_update_email("student@gmail.com", event_id="event-4")
+            self.assertEqual((refused.code, refused.retryable, refused.status),
+                             ("temporary_failure", True, 450))
+
+    def test_invalid_gmail_configuration_does_not_connect_or_downgrade_to_resend(self):
+        with patch.dict(os.environ, {"PH_GMAIL_USER": "bad\n@gmail.com", "PH_GMAIL_APP_PASSWORD": "abcdefghijklmnop"}):
+            self.assertEqual(send_update_email("student@gmail.com", event_id="x").code,
+                             "invalid_configuration")
+        self.assertEqual(_SMTP.instances, [])
+        self.assertEqual(_Connection.requests, [])
+
+    def test_partial_gmail_configuration_uses_resend_when_available(self):
+        _Connection.responses = [_Response(200, b'{"id":"email_2"}')]
+        with patch.dict(os.environ, {"PH_GMAIL_USER": "physics.house@gmail.com", "PH_GMAIL_APP_PASSWORD": ""}):
+            self.assertTrue(delivery_configured())
+            self.assertTrue(send_update_email("student@gmail.com", event_id="x").sent)
+        self.assertEqual(len(_Connection.requests), 1)
+        self.assertEqual(_SMTP.instances, [])
+
+    def test_dispatch_gate_accepts_gmail_without_resend(self):
+        owner = MagicMock()
+        owner.dispatch_outbox.return_value = {"processed": 0, "sent": 0, "retrying": 0, "dead": 0}
+        with patch.dict(os.environ, {
+            "PH_GMAIL_USER": "physics.house@gmail.com",
+            "PH_GMAIL_APP_PASSWORD": "abcdefghijklmnop",
+            "RESEND_API_KEY": "", "PH_EMAIL_FROM": "",
+            "PH_ADMIN_NOTIFICATION_EMAIL": "owner@gmail.com",
+        }), patch.object(site, "_backend", return_value=owner):
+            result = site._dispatch_notifications(limit=2)
+        self.assertEqual(result, owner.dispatch_outbox.return_value)
+        owner.dispatch_outbox.assert_called_once_with(
+            site.send_update_email, limit=2, admin_email="owner@gmail.com"
+        )
 
 
 if __name__ == "__main__":

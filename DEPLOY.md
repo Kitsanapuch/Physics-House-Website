@@ -2,7 +2,7 @@
 
 แพ็กเกจนี้จัดหน้า login และไฟล์ภาพ/สไตล์ไว้ใน `public/` ส่วน `private/dashboard.html` ให้ Flask ที่ `app.py` ระดับรากโปรเจกต์ตรวจเซสชันก่อนส่งหน้า ข้อมูลบัญชี นักเรียน การเงิน และค่าจ้างอยู่ในฐานข้อมูล Turso ระยะไกล ไม่ใช้ไฟล์ SQLite ใน Vercel ไฟล์ในแพ็กเกจไม่มีฐานข้อมูลจริงหรือรหัสผ่าน
 
-**สถานะ ณ 20 ต.ค. 2026:** ฐานข้อมูล Turso Cloud แผน Starter เชื่อมกับ environment **Production** ของโปรเจกต์แล้ว โดย integration ให้ `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` เป็นค่า Sensitive ทั้งคู่ ฐานข้อมูลใช้ URL แบบ libSQL (`libsql://...`) และโค้ดรองรับด้วย `libsql` บน Python การรัน `manage.py init` และ `manage.py check` กับฐานจริงผ่านแล้ว: schema พร้อม, ผู้ดูแลที่ active 1 บัญชี, และเรทกลางตรง 8 ช่วง Production deployment ผ่านการตรวจ `/api/health`, การล็อกอินผู้ดูแล, หน้าแดชบอร์ดที่ป้องกันไว้ และการออกจากระบบ ส่วนฐาน Preview แยก, อีเมลผู้ส่ง, การซิงก์ Google Sheet อัตโนมัติ, การยืนยันอีเมล, MFA และนโยบายข้อมูลเด็กยังไม่ครบ จึงไม่ควรถือว่าระบบพร้อมรับข้อมูลนักเรียนจริงทุกกรณี
+**สถานะ ณ 20 ต.ค. 2026:** ฐานข้อมูล Turso Cloud แผน Starter แยกสำหรับ **Production** และ **Preview** แล้ว โดย integration ให้ `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` ของแต่ละ environment เป็นค่า Sensitive ฐานข้อมูลใช้ URL แบบ libSQL (`libsql://...`) และโค้ดรองรับด้วย `libsql` บน Python การรัน `manage.py init` และ `manage.py check` กับทั้งสองฐานผ่านแล้ว: schema พร้อม, ผู้ดูแลที่ active ฐานละ 1 บัญชี และเรทกลางตรง 8 ช่วง Production ผ่านการตรวจ `/api/health`, การล็อกอินผู้ดูแล, หน้าแดชบอร์ดที่ป้องกันไว้ และการออกจากระบบ Preview ใช้บัญชีทดสอบคนละรหัสกับ Production และทดสอบล็อกอิน/แดชบอร์ดจริงแล้ว ทั้งสองฐานเปิด Delete Protection ส่วน Gmail ผู้ส่ง, การซิงก์ Google Sheet อัตโนมัติ, การยืนยันอีเมล, MFA และนโยบายข้อมูลเด็กยังไม่ครบ จึงไม่ควรถือว่าระบบพร้อมรับข้อมูลนักเรียนจริงทุกกรณี
 
 ## 1. เตรียมบัญชีและฐานข้อมูล
 
@@ -28,8 +28,10 @@ vercel link
 | `TURSO_DATABASE_URL` | URL แบบ `libsql://...` ของฐานข้อมูล Production ที่ Turso Cloud integration เชื่อมให้ | **Sensitive**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
 | `TURSO_AUTH_TOKEN` | token ของฐานข้อมูล Production ที่ Turso Cloud integration เชื่อมให้ | **Sensitive**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
 | `PH_PUBLIC_ORIGIN` | `https://โดเมนจริงของร้าน` ถ้ามี custom domain | exact HTTPS origin; ไม่ใส่เครื่องหมาย `/` ปิดท้าย |
-| `RESEND_API_KEY` | API key ของ Resend หลังสร้างบัญชีและตรวจยืนยันโดเมนผู้ส่ง | **Secret**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
-| `PH_EMAIL_FROM` | อีเมลผู้ส่งบนโดเมนที่ตรวจยืนยันแล้ว เช่น `updates@your-domain.example` | ฝั่งเซิร์ฟเวอร์เท่านั้น |
+| `PH_GMAIL_USER` | ที่อยู่ Gmail เต็มของร้านที่ใช้ส่ง เช่น `yourshop@gmail.com` | ฝั่งเซิร์ฟเวอร์เท่านั้น |
+| `PH_GMAIL_APP_PASSWORD` | App Password 16 ตัวอักษรที่สร้างในบัญชี Google หลังเปิด 2-Step Verification; **ไม่ใช่รหัสผ่าน Gmail ปกติ** | **Sensitive**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
+| `RESEND_API_KEY` | ตัวเลือกสำรอง: API key ของ Resend หลังตรวจยืนยันโดเมนผู้ส่ง | **Sensitive**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
+| `PH_EMAIL_FROM` | ตัวเลือกสำรอง: อีเมลผู้ส่งบนโดเมนที่ตรวจยืนยันกับ Resend | ฝั่งเซิร์ฟเวอร์เท่านั้น |
 | `PH_ADMIN_NOTIFICATION_EMAIL` | อีเมลผู้ดูแลที่ต้องการรับการแจ้งเตือน | ฝั่งเซิร์ฟเวอร์เท่านั้น |
 | `CRON_SECRET` | ค่าสุ่มอย่างน้อย 32 ตัวอักษรสำหรับป้องกัน endpoint ส่งอีเมลค้าง | **Secret**; ฝั่งเซิร์ฟเวอร์เท่านั้น |
 
@@ -39,7 +41,11 @@ vercel link
 
 สำหรับ Preview ให้เชื่อมฐานข้อมูล Turso Cloud อีกฐานกับ environment **Preview** แล้วตรวจว่ามี `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` ของฐานนั้นโดยเฉพาะ เพื่อไม่ให้บัญชีทดสอบหรือข้อมูลจำลองปะปนกับข้อมูลจริง ไม่ต้องตั้ง `PH_PUBLIC_ORIGIN` สำหรับ Preview เมื่อใช้ URL ที่ Vercel สร้าง อย่าตั้งค่า Preview ให้ชี้ฐานข้อมูล Production
 
-การแจ้งอีเมลต้องตั้ง `RESEND_API_KEY` และ `PH_EMAIL_FROM` หลังตรวจยืนยันโดเมนผู้ส่งใน Resend; สำหรับการแจ้งผู้ดูแลต้องมี `PH_ADMIN_NOTIFICATION_EMAIL` ด้วย ข้อความอีเมลบอกเพียงว่ามีข้อมูลอัปเดตและให้กลับมาเข้าเว็บไซต์เอง ไม่ใส่ชื่อเด็ก ข้อมูลผู้ปกครอง จำนวนเงิน หรือเลขอ้างอิง ธุรกรรมหลักบันทึกลงฐานข้อมูลก่อน; อีเมลที่ส่งไม่สำเร็จอยู่ใน outbox เพื่อส่งซ้ำแบบจำกัดครั้งด้วย Cron ถ้ายังไม่ตั้งค่าผู้ส่ง ระบบทำงานด้านข้อมูลได้ แต่ **จะยังไม่มีอีเมลส่งจริง** ห้ามใช้ผู้ส่งที่ไม่ผ่านการยืนยันหรือใส่ API key ในไฟล์ frontend บัญชี Vercel Hobby รัน Cron ได้วันละครั้ง จึงอาจส่งอีเมลที่ต้องลองซ้ำในวันถัดไป และการส่งซ้ำหลังหน้าต่างป้องกันซ้ำของผู้ให้บริการหมดอายุอาจเกิดอีเมลแจ้งทั่วไปซ้ำได้ ผู้ดูแลตรวจจำนวนค้าง/ส่งไม่สำเร็จได้ในหน้าแดชบอร์ด
+สำหรับร้านที่ใช้ Gmail ปกติ ให้เปิด 2-Step Verification ในบัญชี Google ของร้าน สร้าง App Password เฉพาะเว็บนี้ แล้วตั้ง `PH_GMAIL_USER` กับ `PH_GMAIL_APP_PASSWORD` ใน Vercel Production; ตั้ง `PH_ADMIN_NOTIFICATION_EMAIL` ด้วยเพื่อรับการแจ้งผู้ดูแล ไม่ต้องมีโดเมนผู้ส่งแยกเมื่อส่งจาก Gmail นี้ หากบัญชีไม่อนุญาตให้สร้าง App Password ต้องเลือกวิธียืนยันตัวตนหรือผู้ให้บริการส่งอีเมลอื่น การเปลี่ยนรหัสบัญชี Google อาจทำให้ App Password ถูกยกเลิก ต้องสร้างใหม่และ redeploy ห้ามใส่รหัสผ่านบัญชี Google ปกติหรือ App Password ใน Git, frontend หรือแชต
+
+ระบบใช้ `smtp.gmail.com:465` ผ่าน SSL/TLS พร้อมตรวจใบรับรองและ timeout; [Vercel อนุญาตพอร์ต SMTP 465](https://vercel.com/kb/guide/serverless-functions-and-smtp) แต่ต้องทดสอบการเชื่อมต่อจริงหลัง deploy หากกำหนด Gmail และ Resend ครบทั้งสองชุด จะเลือก Gmail ก่อน; หากไม่มี Gmail ครบคู่จึงใช้ Resend ซึ่งต้องมี `RESEND_API_KEY` และ `PH_EMAIL_FROM` จากโดเมนที่ยืนยันแล้ว ระบบไม่สลับไปอีกผู้ให้บริการหลังส่งล้มเหลว เพราะผล SMTP บางกรณีไม่ชัดว่าเซิร์ฟเวอร์รับข้อความแล้วหรือยัง
+
+ข้อความอีเมลบอกเพียงว่ามีข้อมูลอัปเดตและให้กลับมาเข้าเว็บไซต์เอง ไม่ใส่ชื่อเด็ก ข้อมูลผู้ปกครอง จำนวนเงิน หรือเลขอ้างอิง ธุรกรรมหลักบันทึกลงฐานข้อมูลก่อน; อีเมลที่ส่งไม่สำเร็จอยู่ใน outbox เพื่อส่งซ้ำแบบจำกัดครั้งด้วย Cron ถ้ายังไม่ตั้งค่าผู้ส่ง ระบบทำงานด้านข้อมูลได้ แต่ **จะยังไม่มีอีเมลส่งจริง** บัญชี Vercel Hobby รัน Cron ได้วันละครั้ง จึงอาจส่งอีเมลที่ต้องลองซ้ำในวันถัดไป SMTP ไม่มีคีย์ป้องกันการส่งซ้ำแบบ Resend; เมื่อการตอบรับไม่ชัดเจน การส่งซ้ำอาจทำให้ได้รับอีเมลแจ้งทั่วไปซ้ำ ผู้ดูแลตรวจจำนวนค้าง/ส่งไม่สำเร็จได้ในหน้าแดชบอร์ด
 
 ## 3. สร้างตารางและผู้ดูแลคนแรก
 
@@ -97,7 +103,7 @@ vercel deploy
 4. นักเรียนสมัครโดยกรอกระดับชั้น โรงเรียน และข้อมูลผู้ปกครอง → สมัครเรียน → เห็นสถานะรอผู้ดูแลแจ้งยอด → ผู้ดูแลสร้างใบแจ้งยอดพร้อมจำนวนเงิน/วันครบกำหนด → นักเรียนเห็นยอดที่ผู้ดูแลระบุและแจ้งเลขอ้างอิงชำระเท่านั้น ตรวจว่านักเรียนกำหนดหรือแก้ยอดเองไม่ได้ ทดสอบผู้ดูแลยกเลิกใบแจ้งยอดที่ยังไม่รับเงินและเปิดใบเดิมกลับได้ โดยไม่ทำให้เกิดใบซ้ำ
 5. ผู้ดูแลสร้างคาบเรียนและเลือกห้อง ช่วงเวลา ครู รวมทั้งนักเรียนที่ลงคอร์สนั้นเอง ตรวจว่าคาบไม่มีการสุ่มครูหรือเพิ่มรายชื่อจากใบสมัครโดยอัตโนมัติ ตรวจห้อง/ครูที่เวลาซ้อน คาบที่ยกเลิก การแก้รายชื่อ และตารางเรียน/สอนที่แสดงเฉพาะบัญชีที่เกี่ยวข้อง ครูลงเวลา → ผู้ดูแลอนุมัติ → ตรวจคำนวณค่าจ้างและสิทธิ์ไม่ให้ครู/นักเรียนคนอื่นอ่านข้อมูลผู้ปกครอง
 6. ผู้ดูแลเปิดแผง “ส่งออกข้อมูล” แล้วดาวน์โหลดรายงาน CSV เพื่อนำเข้า Google Sheet ด้วยมือ; ชุดนักเรียนมีข้อมูลผู้ปกครอง จึงต้องจำกัดสิทธิ์ไฟล์และชีตเฉพาะผู้ดูแล API รายงาน `/api/admin/reports/{students|teachers|courses|classes|class_rosters|enrollments|invoices|payments|claims|teaching|payroll|rates}` ให้ข้อมูลแบบ JSON ทีละหน้าแก่ผู้ดูแลเท่านั้น Sheet ค่าจ้างจะคำนวณทันทีเมื่อกรอกหรือแก้รายการใน Sheet เอง แต่ข้อมูลที่บันทึกในเว็บ **ยังไม่ซิงก์เข้าชีตอัตโนมัติ**
-7. เมื่อตั้งค่า Resend แล้ว ทดสอบอีเมลกับบัญชีทดสอบจริงโดยกระตุ้นการสมัครเรียน/แจ้งยอด/เปลี่ยนห้องเรียน/อนุมัติรายการ ตรวจว่าไปถึงผู้รับที่ถูกต้องและไม่มีรายละเอียดส่วนบุคคลในข้อความ ตรวจรายการใน outbox ที่ส่งไม่สำเร็จและการทำงานของ Cron แบบไม่บันทึก API key ลง log
+7. เมื่อตั้งค่า Gmail App Password หรือ Resend แล้ว ทดสอบอีเมลกับบัญชีทดสอบจริงโดยกระตุ้นการสมัครเรียน/แจ้งยอด/เปลี่ยนห้องเรียน/อนุมัติรายการ ตรวจว่าไปถึงผู้รับที่ถูกต้องและไม่มีรายละเอียดส่วนบุคคลในข้อความ ตรวจรายการใน outbox ที่ส่งไม่สำเร็จและการทำงานของ Cron แบบไม่บันทึก App Password หรือ API key ลง log
 8. ตรวจ cookie มี `Secure`, `HttpOnly`, `SameSite` บน HTTPS; เปลี่ยนรหัสบัญชีทดสอบแล้วเซสชันเก่าหมดอายุ; log ไม่มี token, รหัสผ่าน หรือข้อมูลผู้ปกครอง
 
 หาก Deployment Protection ของ Vercel เปิดอยู่ ให้ใช้การเข้าถึงที่ Vercel อนุญาตตามปกติในการทดสอบ อย่าปิดการป้องกันเพื่อให้ smoke test ผ่าน เมื่อ Preview ผ่านแล้วจึงสร้าง Production deployment ที่ยังไม่ผูกโดเมน:
@@ -125,6 +131,6 @@ vercel rollback
 
 `vercel rollback` ย้อน **โค้ด/การผูกโดเมน** ไป deployment ก่อนหน้า ไม่ย้อนฐานข้อมูล ก่อน migration ทุกครั้งต้องมี backup/branch ที่ตรวจว่ากู้คืนได้ หาก schema ใหม่ไม่เข้ากับโค้ดเก่า ให้ทำ migration แบบเข้ากันได้หรือแก้ไปข้างหน้า แทนการ rollback โค้ดอย่างเดียว เปลี่ยน Turso token ทันทีหากสงสัยว่ารั่ว และอัปเดต Secret ใน Vercel ก่อน redeploy
 
-ปัจจุบันผู้ดูแลส่งออกรายงาน CSV เพื่อ **นำเข้า Google Sheet ด้วยมือ** ได้ แต่ยังไม่มีการซิงก์ Sheet อัตโนมัติ อีเมลแจ้งเตือนจะเริ่มทำงานต่อเมื่อกำหนดผู้ให้บริการและโดเมนผู้ส่งครบ และการที่ผู้ให้บริการรับอีเมลแล้วไม่ได้รับประกันว่าจะเข้ากล่อง Gmail การยืนยันอีเมล, MFA, ระบบส่งรหัสชั่วคราวที่ปลอดภัย และนโยบายเก็บ/ลบข้อมูลเด็กยังต้องดำเนินการก่อนเปิดรับข้อมูลจริง ไม่ควรถือว่าเสร็จเพียงเพราะ Vercel deployment แสดงสถานะ Ready
+ปัจจุบันผู้ดูแลส่งออกรายงาน CSV เพื่อ **นำเข้า Google Sheet ด้วยมือ** ได้ แต่ยังไม่มีการซิงก์ Sheet อัตโนมัติ อีเมลแจ้งเตือนจะเริ่มทำงานต่อเมื่อกำหนด Gmail App Password หรือผู้ให้บริการส่งอื่นครบ และการที่ผู้ให้บริการรับอีเมลแล้วไม่ได้รับประกันว่าจะเข้ากล่องรับ การยืนยันอีเมล, MFA, ระบบส่งรหัสชั่วคราวที่ปลอดภัย และนโยบายเก็บ/ลบข้อมูลเด็กยังต้องดำเนินการก่อนเปิดรับข้อมูลจริง ไม่ควรถือว่าเสร็จเพียงเพราะ Vercel deployment แสดงสถานะ Ready
 
-อ้างอิง: [Flask on Vercel](https://vercel.com/docs/frameworks/backend/flask), [Vercel Marketplace Storage](https://vercel.com/docs/marketplace-storage), [Turso Cloud บน Vercel Marketplace](https://vercel.com/marketplace/tursocloud), [Vercel deployment และ promote](https://vercel.com/docs/cli/deploying-from-cli), [Vercel rollback](https://vercel.com/docs/cli/rollback), [Turso Python remote driver](https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx)
+อ้างอิง: [Flask on Vercel](https://vercel.com/docs/frameworks/backend/flask), [Vercel Marketplace Storage](https://vercel.com/docs/marketplace-storage), [Turso Cloud บน Vercel Marketplace](https://vercel.com/marketplace/tursocloud), [Vercel SMTP](https://vercel.com/kb/guide/serverless-functions-and-smtp), [Google App Password](https://support.google.com/accounts/answer/185833), [Vercel deployment และ promote](https://vercel.com/docs/cli/deploying-from-cli), [Vercel rollback](https://vercel.com/docs/cli/rollback), [Turso Python remote driver](https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx)

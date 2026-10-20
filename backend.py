@@ -529,8 +529,9 @@ class PhysicsHouseApp:
         """Lease committed notices, send outside DB transactions, then persist outcome.
 
         `send_email(address, event_id=id)` is injected so tests cannot contact
-        the mail provider. The lease protects concurrent Vercel invocations;
-        the stable ID is used by the provider's idempotency key on retries.
+        the mail provider. The lease protects concurrent Vercel invocations.
+        Resend can use the stable ID as an idempotency key; SMTP has no
+        exactly-once guarantee.
         """
         limit = max(0, min(int(limit), 25))
         admin_email = admin_email.strip() if isinstance(admin_email, str) else ""
@@ -545,9 +546,9 @@ class PhysicsHouseApp:
             with self.connect() as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 # Hobby Cron can run only daily. Retry transient failures for
-                # seven days, with a stable provider idempotency key. Resend's
-                # key retention is 24 hours, so an uncertain acknowledgement
-                # can result in a duplicate generic notice on a later day.
+                # seven days. Resend can dedupe the stable event ID for 24
+                # hours; SMTP has no provider idempotency key. An uncertain
+                # acknowledgement may yield a duplicate generic notice.
                 expired = conn.execute(
                     "UPDATE notification_outbox SET status='dead',last_error_code='retry_expired',"
                     "lease_token=NULL,lease_until=NULL "

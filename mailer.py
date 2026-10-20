@@ -1,15 +1,15 @@
-"""Send privacy-preserving transactional notifications through Resend.
+"""Send privacy-preserving transactional notifications through Gmail or Resend.
 
-Only the recipient address leaves Physics House; the subject and message are
+Only the sender and recipient addresses leave Physics House; the subject and message are
 fixed and contain no student, guardian, timetable, or financial details. A
-successful response means Resend accepted the message, not that Gmail placed
-it in the recipient's inbox. This module never sends without both production
-environment variables and never logs credentials or provider response bodies.
+successful response means the selected provider accepted the message, not
+that it reached the recipient's inbox. This module never sends without a
+complete provider configuration and never logs credentials or response bodies.
 
 Caller contract: send_update_email(recipient_email, event_id=<stable DB event id>)
 returns MailResult. Reuse the same event id when retrying the *same* notice.
-Resend's idempotency retention is 24 hours, so persistent outbox workers should
-record acceptance and retry uncertain outcomes promptly.
+Resend's idempotency retention is 24 hours. SMTP has no equivalent guarantee:
+an ambiguous SMTP failure may result in a duplicate generic notice on retry.
 """
 
 from __future__ import annotations
@@ -19,8 +19,11 @@ import http.client
 import json
 import os
 import re
+import smtplib
 import ssl
+from contextlib import suppress
 from dataclasses import dataclass
+from email.message import EmailMessage
 
 
 _API_HOST = "api.resend.com"
@@ -35,6 +38,8 @@ _MESSAGE = (
 _LOCAL_RE = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+\Z", re.ASCII)
 _DOMAIN_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z", re.ASCII)
 _API_KEY_RE = re.compile(r"re_[A-Za-z0-9_-]{8,256}\Z", re.ASCII)
+_GMAIL_HOST = "smtp.gmail.com"
+_GMAIL_PORT = 465
 
 
 @dataclass(frozen=True)
@@ -74,11 +79,75 @@ def _retry_after(value: str | None) -> int | None:
     return min(int(value), 3600)
 
 
+def delivery_configured() -> bool:
+    """Return whether a complete server-side provider pair is present."""
+
+    return bool(
+        (os.getenv("PH_GMAIL_USER") and os.getenv("PH_GMAIL_APP_PASSWORD"))
+        or (os.getenv("RESEND_API_KEY") and os.getenv("PH_EMAIL_FROM"))
+    )
+
+
+def _smtp_refusal(status: int | None, *, auth: bool = False) -> MailResult:
+    if status is not None and 400 <= status < 500:
+        return MailResult(False, "temporary_failure", retryable=True, status=status)
+    return MailResult(False, "invalid_configuration" if auth else "provider_rejected", status=status)
+
+
+def _send_gmail_email(recipient: str, sender_value: str, app_password_value: str) -> MailResult:
+    sender = _email_address(sender_value)
+    # Google displays app passwords in groups, so accept optional spaces but
+    # never pass other whitespace/control characters to the SMTP transport.
+    app_password = app_password_value.replace(" ", "")
+    if (sender is None or sender.split("@", 1)[1] not in {"gmail.com", "googlemail.com"}
+            or not re.fullmatch(r"[A-Za-z0-9]{16}", app_password, re.ASCII)):
+        return MailResult(False, "invalid_configuration")
+
+    message = EmailMessage()
+    message["From"] = sender
+    message["To"] = recipient
+    message["Subject"] = _SUBJECT
+    message.set_content(_MESSAGE)
+
+    connection = None
+    try:
+        connection = smtplib.SMTP_SSL(
+            _GMAIL_HOST, _GMAIL_PORT, timeout=_TIMEOUT_SECONDS,
+            context=ssl.create_default_context(),
+        )
+        connection.login(sender, app_password)
+        refused = connection.send_message(message, from_addr=sender, to_addrs=[recipient])
+        if refused:
+            code = next(iter(refused.values()))[0]
+            return _smtp_refusal(code if isinstance(code, int) else None)
+        # Accepted by Gmail's SMTP server, not guaranteed delivered to inbox.
+        return MailResult(True, "accepted")
+    except smtplib.SMTPAuthenticationError as exc:
+        return _smtp_refusal(exc.smtp_code if isinstance(exc.smtp_code, int) else None, auth=True)
+    except smtplib.SMTPResponseException as exc:
+        return _smtp_refusal(exc.smtp_code if isinstance(exc.smtp_code, int) else None)
+    except smtplib.SMTPRecipientsRefused as exc:
+        first = next(iter(exc.recipients.values()), (None,))
+        code = first[0] if isinstance(first, tuple) and first else None
+        return _smtp_refusal(code if isinstance(code, int) else None)
+    except ssl.SSLCertVerificationError:
+        return MailResult(False, "invalid_configuration")
+    except (smtplib.SMTPException, OSError, TimeoutError):
+        # Failure after DATA may be ambiguous: the outbox may retry this
+        # generic notice, but no student or payment details are in the body.
+        return MailResult(False, "temporary_failure", retryable=True)
+    finally:
+        if connection is not None:
+            # Closing the socket cannot change a successful DATA response.
+            with suppress(OSError, smtplib.SMTPException):
+                connection.close()
+
+
 def send_update_email(recipient_email: str, *, event_id: str) -> MailResult:
-    """Ask Resend to email one recipient about one committed database update.
+    """Ask the selected provider to email one committed database update.
 
     `event_id` must uniquely identify this notification. Supply the same ID
-    on retries. The function makes at most one HTTPS request and returns a
+    on retries. The function makes one provider attempt and returns a
     non-secret status that a caller can persist or use to schedule a retry.
     It must be called after committing the business transaction; email
     failure must not undo the saved update.
@@ -91,6 +160,11 @@ def send_update_email(recipient_email: str, *, event_id: str) -> MailResult:
         ord(character) < 32 or ord(character) == 127 for character in event_id
     ):
         return MailResult(False, "invalid_event_id")
+
+    gmail_user = os.getenv("PH_GMAIL_USER", "")
+    gmail_password = os.getenv("PH_GMAIL_APP_PASSWORD", "")
+    if gmail_user and gmail_password:
+        return _send_gmail_email(recipient, gmail_user, gmail_password)
 
     api_key = os.getenv("RESEND_API_KEY", "")
     sender_value = os.getenv("PH_EMAIL_FROM", "")

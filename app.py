@@ -15,7 +15,7 @@ from turso_serverless import DatabaseError
 from turso_serverless.protocol import ProtocolError
 
 from backend import MAX_BODY, Response
-from mailer import send_update_email
+from mailer import delivery_configured, send_update_email
 from remote import RemotePhysicsHouseApp
 
 
@@ -93,7 +93,7 @@ def _error(status: int, code: str, message: str):
 
 def _dispatch_notifications(*, limit: int) -> dict[str, int] | None:
     """Deliver a bounded batch only after the business transaction committed."""
-    if not os.getenv("RESEND_API_KEY") or not os.getenv("PH_EMAIL_FROM"):
+    if not delivery_configured():
         return None
     return _backend().dispatch_outbox(
         send_update_email,
