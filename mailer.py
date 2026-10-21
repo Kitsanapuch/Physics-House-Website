@@ -1,7 +1,7 @@
 """Send privacy-preserving transactional notifications through Gmail or Resend.
 
 Only the sender and recipient addresses leave Physics Plus; the subject and message are
-fixed and contain no student, guardian, timetable, or financial details. A
+selected from fixed templates and contain no student, guardian, timetable, or financial details. A
 successful response means the selected provider accepted the message, not
 that it reached the recipient's inbox. This module never sends without a
 complete provider configuration and never logs credentials or response bodies.
@@ -33,6 +33,12 @@ _SUBJECT = "Physics Plus: มีข้อมูลอัปเดตในระ
 _MESSAGE = (
     "มีข้อมูลอัปเดตในระบบ Physics Plus\n"
     "กรุณาเข้าสู่เว็บไซต์ Physics Plus ด้วยตนเองเพื่อตรวจสอบรายละเอียด\n"
+    "หากไม่ได้คาดว่าจะได้รับอีเมลนี้ โปรดละเลยข้อความนี้"
+)
+_CLASS_CANCELLED_SUBJECT = "Physics Plus: มีการยกคลาสเรียน"
+_CLASS_CANCELLED_MESSAGE = (
+    "คาบเรียนในตารางของคุณมีการยกคลาส\n"
+    "กรุณาเข้าสู่เว็บไซต์ Physics Plus ด้วยตนเองเพื่อตรวจสอบคาบเรียนและเหตุผล\n"
     "หากไม่ได้คาดว่าจะได้รับอีเมลนี้ โปรดละเลยข้อความนี้"
 )
 _LOCAL_RE = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+\Z", re.ASCII)
@@ -94,7 +100,8 @@ def _smtp_refusal(status: int | None, *, auth: bool = False) -> MailResult:
     return MailResult(False, "invalid_configuration" if auth else "provider_rejected", status=status)
 
 
-def _send_gmail_email(recipient: str, sender_value: str, app_password_value: str) -> MailResult:
+def _send_gmail_email(recipient: str, sender_value: str, app_password_value: str,
+                      *, subject: str = _SUBJECT, body: str = _MESSAGE) -> MailResult:
     sender = _email_address(sender_value)
     # Google displays app passwords in groups, so accept optional spaces but
     # never pass other whitespace/control characters to the SMTP transport.
@@ -106,8 +113,8 @@ def _send_gmail_email(recipient: str, sender_value: str, app_password_value: str
     message = EmailMessage()
     message["From"] = sender
     message["To"] = recipient
-    message["Subject"] = _SUBJECT
-    message.set_content(_MESSAGE)
+    message["Subject"] = subject
+    message.set_content(body)
 
     connection = None
     try:
@@ -143,7 +150,8 @@ def _send_gmail_email(recipient: str, sender_value: str, app_password_value: str
                 connection.close()
 
 
-def send_update_email(recipient_email: str, *, event_id: str) -> MailResult:
+def send_update_email(recipient_email: str, *, event_id: str,
+                      event_type: str | None = None) -> MailResult:
     """Ask the selected provider to email one committed database update.
 
     `event_id` must uniquely identify this notification. Supply the same ID
@@ -160,11 +168,16 @@ def send_update_email(recipient_email: str, *, event_id: str) -> MailResult:
         ord(character) < 32 or ord(character) == 127 for character in event_id
     ):
         return MailResult(False, "invalid_event_id")
+    if event_type == "class_cancelled":
+        subject, body = _CLASS_CANCELLED_SUBJECT, _CLASS_CANCELLED_MESSAGE
+    else:
+        subject, body = _SUBJECT, _MESSAGE
 
     gmail_user = os.getenv("PH_GMAIL_USER", "")
     gmail_password = os.getenv("PH_GMAIL_APP_PASSWORD", "")
     if gmail_user and gmail_password:
-        return _send_gmail_email(recipient, gmail_user, gmail_password)
+        return _send_gmail_email(recipient, gmail_user, gmail_password,
+                                 subject=subject, body=body)
 
     api_key = os.getenv("RESEND_API_KEY", "")
     sender_value = os.getenv("PH_EMAIL_FROM", "")
@@ -179,7 +192,7 @@ def send_update_email(recipient_email: str, *, event_id: str) -> MailResult:
     unique = f"{event_id}\x00{recipient.casefold()}".encode("utf-8")
     idempotency_key = "pp-" + hashlib.sha256(unique).hexdigest()
     payload = json.dumps(
-        {"from": sender, "to": [recipient], "subject": _SUBJECT, "text": _MESSAGE},
+        {"from": sender, "to": [recipient], "subject": subject, "text": body},
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")

@@ -16,6 +16,8 @@
   };
   const $ = (id) => document.getElementById(id);
   const state = { me: null, csrf: '', data: null, courses: [], academic: null, classes: [] };
+  let studentClassPollBusy = false;
+  let lastStudentClassPoll = 0;
   const thaiMoney = (satang) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(Number(satang || 0) / 100);
   const thaiDate = (date) => {
     if (!date) return '—';
@@ -63,6 +65,7 @@
   const personalCode = (user) => user.student_code || user.teacher_code || '—';
   const epochValue = (value) => typeof value === 'number' ? value : Date.parse(String(value || '')) / 1000;
   const classSummary = (item) => `${thaiDateTime(epochValue(item.starts_at))} – ${thaiDateTime(epochValue(item.ends_at))}`;
+  const cancellationReason = (item) => item.cancellation_reason || '';
 
   async function api(path, method = 'GET', body = null) {
     const headers = { Accept: 'application/json' };
@@ -202,7 +205,7 @@
       <aside class="sidebar" aria-label="เมนูหลัก"><div class="sidebrand"><img src="physics-plus-logo-yellow-black.png" alt=""><div><strong>Physics<br>Plus<span style="color:#ffda39">.</span></strong><small>LEARNING WORKSPACE</small></div></div><div class="nav-label">พื้นที่ของคุณ</div><nav class="side-nav" id="side-nav"></nav><div class="side-profile"><span class="profile-avatar" id="profile-avatar"></span><div><strong id="profile-name"></strong><small id="profile-role"></small></div></div></aside>
       <header class="live-header"><div class="brand"><img class="mark" src="physics-plus-logo-yellow-black.png" alt="โลโก้ Physics Plus"><div>Physics Plus<div class="muted" id="header-role"></div></div></div><div class="header-actions"><button type="button" id="password-button">เปลี่ยนรหัสผ่าน</button><button type="button" id="logout-button">ออกจากระบบ</button></div></header>
       <nav class="mobile-nav" id="mobile-nav" aria-label="ส่วนต่าง ๆ ของระบบ"></nav>
-      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="live-content"></div></main>
+      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="student-live-cancellation" class="class-live-cancellation" role="alert" hidden></div><div id="live-content"></div></main>
       <dialog id="live-dialog" class="live-dialog"></dialog>`;
     $('profile-name').textContent = user.name;
     $('profile-avatar').textContent = user.name.trim().slice(0, 1) || 'PP';
@@ -241,11 +244,11 @@
     const role = state.me.role;
     if (role === 'student') return `
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>ยอดค้างชำระ</span><strong id="student-outstanding">—</strong><small>จากใบแจ้งยอดของคุณ</small></div><div class="stat"><span>คอร์สที่ลงเรียน</span><strong id="student-course-count">—</strong><small>ข้อมูลจากบัญชีของคุณ</small></div><div class="stat"><span>รายการแจ้งชำระรอตรวจ</span><strong id="student-claim-count">—</strong><small>ผู้ดูแลจะตรวจหลักฐานอ้างอิง</small></div></div><section class="panel"><div class="panel-head"><div><h2>คอร์สและใบแจ้งยอดของฉัน</h2><p class="muted">ยอดคงเหลือคำนวณจากรายการชำระที่ผู้ดูแลบันทึกแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>คอร์ส</th><th>เลขที่ใบแจ้งยอด</th><th>ยอดทั้งหมด</th><th>คงเหลือ</th><th>ครบกำหนด</th><th>สถานะ</th></tr></thead><tbody id="student-enrollments"></tbody></table></div></section></section>
-      <section id="student-classes" class="panel new-section"><div class="panel-head"><div><h2>ห้องเรียนและตารางเรียนของฉัน</h2><p class="muted">ผู้ดูแลเป็นผู้จัดห้อง ครู เวลา และรายชื่อทุกคน หลังจัดเข้าห้องแล้วจะแสดงที่นี่</p></div></div><div class="tablewrap"><table><thead><tr><th>รหัสวิชา / คอร์ส</th><th>ห้อง</th><th>วันและเวลา</th><th>ผู้สอน</th><th>สถานะ</th></tr></thead><tbody id="student-classes-rows"></tbody></table></div></section>
+      <section id="student-classes" class="panel new-section"><div class="panel-head"><div><h2>ห้องเรียนและตารางเรียนของฉัน</h2><p class="muted">ผู้ดูแลเป็นผู้จัดห้อง ครู เวลา และรายชื่อทุกคน หลังจัดเข้าห้องแล้วจะแสดงที่นี่</p></div></div><div id="student-class-alerts" class="class-alert-list" aria-live="polite"></div><div class="tablewrap"><table><thead><tr><th>รหัสวิชา / คอร์ส</th><th>ห้อง</th><th>วันและเวลา</th><th>ผู้สอน</th><th>สถานะ</th></tr></thead><tbody id="student-classes-rows"></tbody></table></div></section>
       <section id="catalog" class="panel new-section"><div class="panel-head"><div><h2>สมัครเรียน</h2><p class="muted">เลือกคอร์สแล้วกรอกระดับชั้น โรงเรียน และข้อมูลผู้ปกครอง ผู้ดูแลจะแจ้งยอดค่าเรียนในระบบภายหลัง</p></div></div><div class="course-grid" id="course-grid"></div></section>
       <section id="student-payments" class="new-section"><div class="grid"><div class="panel"><h2>แจ้งชำระค่าเรียน</h2><p class="muted">เลือกใบแจ้งยอดที่ผู้ดูแลกำหนด แล้วกรอกเลขอ้างอิงการโอนเพื่อตรวจสอบ</p><form data-action="student-claim" class="live-form"><label>ใบแจ้งยอด<select name="invoice_id" id="claim-invoice" required></select></label><p class="muted" id="claim-display-amount">ยอดที่ต้องชำระ: เลือกใบแจ้งยอดก่อน</p><label>เลขอ้างอิงการโอน<input name="reference" required maxlength="120" autocomplete="off"></label><button class="primary" type="submit">ส่งรายการแจ้งชำระ</button></form><p class="foot">ยอดชำระกำหนดโดยผู้ดูแล นักเรียนแก้ไขเองไม่ได้ · รายละเอียดบัญชีรับโอนจะแจ้งภายหลัง</p></div><div class="panel"><h2>รายการแจ้งชำระที่ส่งแล้ว</h2><div class="tablewrap"><table><thead><tr><th>วันที่</th><th>จำนวน</th><th>เลขอ้างอิง</th><th>สถานะ</th></tr></thead><tbody id="student-claims"></tbody></table></div></div></div><section class="panel receipt-panel"><div class="panel-head"><div><h2>ใบสำคัญรับเงินของฉัน</h2><p class="muted">ออกตามคอร์สที่สมัครและยอดรับจริง ดาวน์โหลด PDF ได้หลังผู้ดูแลตรวจสอบและยืนยันรับเงินแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>เลขที่ใบสำคัญ</th><th>คอร์ส / ใบแจ้งยอด</th><th>วันที่รับเงิน</th><th>จำนวนที่รับ</th><th>เอกสาร</th></tr></thead><tbody id="student-receipts"></tbody></table></div></section></section>`;
     if (role === 'teacher') return `
-      <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>คาบที่ได้รับมอบหมาย</span><strong id="teacher-session-count">—</strong><small>จากตารางสอนจริง</small></div><div class="stat"><span>รายการลงเวลารอตรวจ</span><strong id="teacher-pending-count">—</strong><small>ผู้ดูแลต้องอนุมัติ</small></div><div class="stat"><span>ค่าจ้างที่จ่ายแล้ว</span><strong id="teacher-paid-total">—</strong><small>จากงวดค่าจ้างของคุณ</small></div></div><section class="panel"><div class="panel-head"><div><h2>ตารางสอนและสถานะเวลาสอน</h2><p class="muted">เลือกเช็กชื่อในคาบที่มีนักเรียน และลงเวลาหลังสอนจริง</p></div></div><div class="tablewrap"><table><thead><tr><th>คาบ / คอร์ส</th><th>ห้อง / เวลา</th><th>นักเรียน</th><th>สถานะ</th><th>เวลาสอน</th><th>ดำเนินการ</th></tr></thead><tbody id="teacher-sessions"></tbody></table></div></section></section>
+      <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>คาบที่ได้รับมอบหมาย</span><strong id="teacher-session-count">—</strong><small>จากตารางสอนจริง</small></div><div class="stat"><span>รายการลงเวลารอตรวจ</span><strong id="teacher-pending-count">—</strong><small>ผู้ดูแลต้องอนุมัติ</small></div><div class="stat"><span>ค่าจ้างที่จ่ายแล้ว</span><strong id="teacher-paid-total">—</strong><small>จากงวดค่าจ้างของคุณ</small></div></div><section class="panel"><div class="panel-head"><div><h2>ตารางสอนและสถานะเวลาสอน</h2><p class="muted">เลือกเช็กชื่อในคาบที่มีนักเรียน และลงเวลาหลังสอนจริง หากต้องยกคลาสล่วงหน้า ให้แจ้งเหตุผลเพื่อแจ้งนักเรียนในห้อง</p></div></div><div class="tablewrap"><table><thead><tr><th>คาบ / คอร์ส</th><th>ห้อง / เวลา</th><th>นักเรียน</th><th>สถานะ</th><th>เวลาสอน</th><th>ดำเนินการ</th></tr></thead><tbody id="teacher-sessions"></tbody></table></div></section></section>
       <section id="teacher-time" class="panel new-section"><h2>ลงเวลาสอนจริง</h2><p class="muted">เวลาอ้างอิงประเทศไทย (UTC+7) บันทึกได้หลังสอนเสร็จ และต้องใกล้คาบที่กำหนด</p><form data-action="teacher-time" class="live-form live-form-grid"><label>คาบเรียน<select name="session_id" id="time-session" required></select></label><label>เริ่มสอนจริง<input name="actual_start" id="actual-start" type="datetime-local" required></label><label>เลิกสอนจริง<input name="actual_end" id="actual-end" type="datetime-local" required></label><label>พัก (นาที)<input name="break_minutes" type="number" min="0" max="480" value="0" required></label><button type="submit" class="primary">ส่งเวลาสอนให้ตรวจ</button></form><p class="foot">ระบบจะตรวจเวลาซ้อนและคำนวณค่าจ้างหลังผู้ดูแลเช็กชื่อครบและยืนยันอัตราแล้ว</p></section>
       <section id="teacher-payroll" class="panel new-section"><h2>ประวัติค่าจ้างของฉัน</h2><p class="muted" id="teacher-approved-unpaid"></p><div class="tablewrap"><table><thead><tr><th>งวด</th><th>ยอด</th><th>สถานะ</th><th>วันที่จ่าย</th><th>รายละเอียด</th></tr></thead><tbody id="teacher-payroll-rows"></tbody></table></div></section>`;
     return `
@@ -298,8 +301,14 @@
     const overdue = invoices.filter((item) => item.status !== 'void' && item.due_date < bangkokToday() && item.amount_satang > item.paid_satang);
     const unbilled = enrollments.filter((item) => item.status === 'active' && !item.invoice_id);
     const pendingClaims = claims.filter((item) => item.status === 'pending');
+    const nowEpoch = Date.now() / 1000;
+    const cancelledClasses = state.classes.filter((item) => item.status === 'cancelled').sort((a, b) => Number(b.cancelled_at || 0) - Number(a.cancelled_at || 0));
+    const recentCancellations = cancelledClasses.filter((item) => Number(item.cancelled_at || 0) >= nowEpoch - 30 * 86400 || epochValue(item.ends_at) >= nowEpoch - 7 * 86400);
     let focus = null;
-    if (overdue.length) focus = focusPanel('ตรวจใบแจ้งยอดที่เลยกำหนด', `${overdue.length} รายการยังมียอดคงเหลือ โปรดตรวจรายละเอียดและติดต่อผู้ดูแลเรื่องการชำระ`, 'ดูใบแจ้งยอด', 'student-payments');
+    if (recentCancellations.length) {
+      const latest = recentCancellations[0];
+      focus = focusPanel('แจ้งยกคลาสเรียน', `${latest.course_title} · ${thaiDateTime(epochValue(latest.starts_at))}${cancellationReason(latest) ? ` · เหตุผล: ${cancellationReason(latest)}` : ''}`, 'ดูตารางเรียน', 'student-classes');
+    } else if (overdue.length) focus = focusPanel('ตรวจใบแจ้งยอดที่เลยกำหนด', `${overdue.length} รายการยังมียอดคงเหลือ โปรดตรวจรายละเอียดและติดต่อผู้ดูแลเรื่องการชำระ`, 'ดูใบแจ้งยอด', 'student-payments');
     else if (unbilled.length) focus = focusPanel('สมัครเรียนสำเร็จแล้ว', `${unbilled.length} คอร์สรอผู้ดูแลแจ้งยอดค่าเรียน เมื่อแจ้งยอดแล้วจะเห็นใบแจ้งยอดในหน้านี้`);
     else if (pendingClaims.length) focus = focusPanel('กำลังตรวจรายการแจ้งชำระ', `${pendingClaims.length} รายการรอผู้ดูแลตรวจสอบ เมื่อยืนยันแล้ว ยอดคงเหลือจะปรับในระบบ`, 'ดูสถานะ', 'student-payments');
     if (focus) $('overview').querySelector('.stats').after(focus);
@@ -311,17 +320,7 @@
       cell(row, item.invoice_id ? thaiMoney(Math.max(0, item.amount_satang - item.paid_satang)) : '—');
       cell(row, thaiDate(item.due_date)); cell(row, item.invoice_id ? status(item.invoice_status) : 'รอแจ้งยอด'); body.append(row);
     }
-    const classBody = $('student-classes-rows');
-    if (!state.classes.length) emptyRow(classBody, 5, 'ยังไม่ได้รับการจัดเข้าห้องเรียน ผู้ดูแลจะกำหนดห้องและเวลาให้');
-    for (const item of state.classes) {
-      const row = element('tr');
-      const courseCell = cell(row, item.course_title);
-      courseCell.prepend(element('strong', 'record-code', `${item.course_code || '—'} · `));
-      cell(row, item.room_name || '—');
-      cell(row, classSummary(item));
-      cell(row, `${item.teacher_name || '—'}${item.teacher_code ? ` · ${item.teacher_code}` : ''}`);
-      cell(row, status(item.status)); classBody.append(row);
-    }
+    renderStudentClassSchedule();
     const catalog = $('course-grid');
     const enrolled = new Set(enrollments.map((item) => item.course_id));
     if (!state.courses.length) catalog.append(element('p', 'muted', 'ยังไม่มีคอร์สที่เปิดรับ'));
@@ -374,6 +373,85 @@
     }
   }
 
+  function renderStudentClassSchedule() {
+    const classBody = $('student-classes-rows');
+    const classAlerts = $('student-class-alerts');
+    if (!classBody || !classAlerts) return;
+    classBody.replaceChildren();
+    classAlerts.replaceChildren();
+    const nowEpoch = Date.now() / 1000;
+    const recentCancellations = state.classes.filter((item) => item.status === 'cancelled'
+      && (Number(item.cancelled_at || 0) >= nowEpoch - 30 * 86400 || epochValue(item.ends_at) >= nowEpoch - 7 * 86400))
+      .sort((a, b) => Number(b.cancelled_at || 0) - Number(a.cancelled_at || 0));
+    for (const item of recentCancellations) {
+      const alert = element('article', 'class-cancel-alert');
+      alert.append(element('strong', '', `ยกคลาส · ${item.course_title}`));
+      alert.append(element('p', '', `คาบเดิม ${classSummary(item)} · ${item.room_name || 'ยังไม่ระบุห้อง'}`));
+      alert.append(element('p', 'class-cancel-reason', `เหตุผล: ${cancellationReason(item) || 'โปรดติดต่อผู้ดูแลเพื่อสอบถามรายละเอียด'}`));
+      classAlerts.append(alert);
+    }
+    if (!state.classes.length) emptyRow(classBody, 5, 'ยังไม่ได้รับการจัดเข้าห้องเรียน ผู้ดูแลจะกำหนดห้องและเวลาให้');
+    for (const item of state.classes) {
+      const row = element('tr');
+      if (item.status === 'cancelled') row.classList.add('is-cancelled');
+      const courseCell = cell(row, item.course_title);
+      courseCell.prepend(element('strong', 'record-code', `${item.course_code || '—'} · `));
+      cell(row, item.room_name || '—');
+      cell(row, classSummary(item));
+      cell(row, `${item.teacher_name || '—'}${item.teacher_code ? ` · ${item.teacher_code}` : ''}`);
+      const classStatus = cell(row, item.status === 'cancelled' ? 'ยกคลาสแล้ว' : status(item.status), item.status === 'cancelled' ? 'cancelled-status' : '');
+      if (item.status === 'cancelled' && cancellationReason(item)) classStatus.append(element('div', 'class-cancel-reason', `เหตุผล: ${cancellationReason(item)}`));
+      classBody.append(row);
+    }
+  }
+
+  function showStudentCancellationAlert(cancelled) {
+    const region = $('student-live-cancellation');
+    if (!region || !cancelled.length) return;
+    region.replaceChildren();
+    const details = element('div');
+    details.append(element('strong', '', cancelled.length === 1 ? 'แจ้งยกคลาสเรียน' : `แจ้งยกคลาสเรียน ${cancelled.length} คาบ`));
+    for (const item of cancelled.slice(0, 3)) {
+      details.append(element('p', '', `${item.course_title} · ${thaiDateTime(epochValue(item.starts_at))} · เหตุผล: ${cancellationReason(item) || 'โปรดติดต่อผู้ดูแลเพื่อสอบถามรายละเอียด'}`));
+    }
+    if (cancelled.length > 3) details.append(element('p', '', `และอีก ${cancelled.length - 3} คาบ ดูรายละเอียดในตารางเรียน`));
+    const actions = element('div', 'class-live-actions');
+    const view = actionButton('ดูตารางเรียน', 'jump'); view.dataset.target = 'student-classes';
+    actions.append(view, actionButton('ปิดประกาศ', 'dismiss-class-alert'));
+    region.append(details, actions);
+    region.hidden = false;
+  }
+
+  async function pollStudentClasses() {
+    if (state.me?.role !== 'student' || document.hidden || studentClassPollBusy || $('live-dialog')?.open) return;
+    const table = $('student-classes-rows');
+    if (!table || Date.now() - lastStudentClassPoll < 5000) return;
+    studentClassPollBusy = true;
+    lastStudentClassPoll = Date.now();
+    try {
+      const result = await api('/api/student/classes');
+      if (table !== $('student-classes-rows') || $('live-dialog')?.open || !Array.isArray(result.classes)) return;
+      if (JSON.stringify(result.classes) === JSON.stringify(state.classes)) return;
+      const previous = new Map(state.classes.map((item) => [item.id, item.status]));
+      const newlyCancelled = result.classes.filter((item) => item.status === 'cancelled' && previous.get(item.id) !== 'cancelled');
+      state.classes = result.classes;
+      renderStudentClassSchedule();
+      showStudentCancellationAlert(newlyCancelled);
+    } catch (_error) {
+      // The next visible-tab check retries; leave the current timetable intact.
+    } finally {
+      studentClassPollBusy = false;
+    }
+  }
+
+  function startStudentClassPolling() {
+    lastStudentClassPoll = Date.now();
+    window.setInterval(() => { void pollStudentClasses(); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) void pollStudentClasses(); });
+    window.addEventListener('focus', () => { void pollStudentClasses(); });
+    $('live-dialog').addEventListener('close', () => { void pollStudentClasses(); });
+  }
+
   function renderTeacher() {
     const sessions = state.data.sessions || [];
     const payroll = state.data.payroll_runs || [];
@@ -408,8 +486,10 @@
       const location = cell(row, classroom?.room_name || '—');
       location.append(element('div', 'muted', `${thaiDateTime(item.starts_at)} – ${thaiDateTime(item.ends_at)}`));
       cell(row, `${classroom?.roster_count ?? 0} คน`);
-      cell(row, status(item.status));
-      const timeState = item.time_status === 'rejected' ? 'ส่งกลับ · ลงเวลาใหม่ได้'
+      const sessionStatus = cell(row, item.status === 'cancelled' ? 'ยกคลาสแล้ว' : status(item.status), item.status === 'cancelled' ? 'cancelled-status' : '');
+      if (item.status === 'cancelled' && cancellationReason(item)) sessionStatus.append(element('div', 'class-cancel-reason', `เหตุผล: ${cancellationReason(item)}`));
+      const timeState = item.status === 'cancelled' ? 'ไม่ต้องลงเวลา'
+        : item.time_status === 'rejected' ? 'ส่งกลับ · ลงเวลาใหม่ได้'
         : item.time_status === 'approved' ? `อนุมัติแล้ว · ${thaiMoney(item.amount_satang)}`
           : item.time_status ? status(item.time_status) : 'ยังไม่ลงเวลา';
       const timeCell = cell(row, timeState, 'time-status');
@@ -420,6 +500,7 @@
       const actions = cell(row, ''); actions.className = 'row-actions';
       if (item.status === 'scheduled') actions.append(actionButton('เช็กชื่อ', 'roster', item.id));
       if ((!item.time_entry_id || item.time_status === 'rejected') && item.status === 'scheduled') actions.append(actionButton(item.time_status === 'rejected' ? 'ส่งเวลาใหม่' : 'ลงเวลา', 'select-time', item.id, 'primary'));
+      if (Boolean(item.can_cancel)) actions.append(actionButton('ยกคลาส', 'teacher-cancel-class', item.id, 'cancel-class-button'));
       body.append(row);
     }
     const select = $('time-session');
@@ -742,7 +823,8 @@
       const roster = cell(row, `${classroom.roster_count ?? classroom.students?.length ?? 0} คน`);
       const names = (classroom.students || []).slice(0, 3).map((person) => person.name).join(', ');
       if (names) roster.append(element('div', 'muted', `${names}${(classroom.students || []).length > 3 ? '…' : ''}`));
-      cell(row, status(classroom.status));
+      const classStatus = cell(row, classroom.status === 'cancelled' ? 'ยกคลาสแล้ว' : status(classroom.status), classroom.status === 'cancelled' ? 'cancelled-status' : '');
+      if (classroom.status === 'cancelled' && cancellationReason(classroom)) classStatus.append(element('div', 'class-cancel-reason', `เหตุผล: ${cancellationReason(classroom)}`));
       const actions = cell(row, ''); actions.className = 'row-actions';
       actions.append(actionButton('ดูห้อง', 'class-detail', classroom.id));
       if (classroom.status === 'scheduled') actions.append(actionButton('แก้ไข', 'class-edit', classroom.id, 'primary'), actionButton('ยกเลิก', 'class-cancel', classroom.id));
@@ -849,6 +931,11 @@
       if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
+    if (action === 'dismiss-class-alert') {
+      const region = $('student-live-cancellation');
+      if (region) { region.hidden = true; region.replaceChildren(); }
+      return;
+    }
     if (action === 'select-time') {
       setTeacherTime(button.dataset.id);
       $('teacher-time').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -882,6 +969,19 @@
           if (!confirm('ยกเลิกห้องเรียนนี้หรือไม่? ตารางเรียนของนักเรียนและครูจะเปลี่ยนตาม')) return;
           await api(`/api/admin/classes/${id}/cancel`, 'POST', {});
           message = 'ยกเลิกห้องเรียนแล้ว'; break;
+        case 'teacher-cancel-class': {
+          if (state.me.role !== 'teacher') throw new Error('เฉพาะครูผู้สอนที่ได้รับมอบหมายเท่านั้น');
+          const session = (state.data.sessions || []).find((item) => item.id === id);
+          if (!session || !session.can_cancel || Number(session.starts_at) <= Date.now() / 1000) throw new Error('คาบนี้ไม่สามารถยกคลาสได้แล้ว กรุณารีเฟรชหน้าหรือติดต่อผู้ดูแล');
+          const answer = await fieldsDialog(`ยกคลาส · ${session.title}`, [
+            { name: 'reason', label: 'เหตุผลที่แจ้งให้นักเรียนทราบ', type: 'textarea', required: true, minLength: 3, maxLength: 300 }
+          ], 'ยืนยันยกคลาสและแจ้งนักเรียน', `${thaiDateTime(session.starts_at)} – ${thaiDateTime(session.ends_at)} · ระบบจะแสดงประกาศในหน้าของนักเรียนที่อยู่ในห้อง และส่งการแจ้งเตือนทางอีเมลตามการตั้งค่าของร้าน`);
+          if (!answer) return;
+          const reason = answer.reason.trim();
+          if (reason.length < 3) throw new Error('กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร');
+          await api(`/api/teacher/classes/${id}/cancel`, 'POST', { reason });
+          message = 'ยกคลาสแล้ว นักเรียนในห้องจะเห็นเหตุผลในตารางเรียน'; break;
+        }
         case 'student-enroll':
           {
             const profile = state.data.profile || {};
@@ -1057,6 +1157,7 @@
         default: throw new Error('ยังไม่รองรับการดำเนินการนี้');
       }
       await load();
+      if (state.me.role === 'student') startStudentClassPolling();
       feedback(message);
     });
   }
@@ -1066,6 +1167,8 @@
     dialog.replaceChildren();
     const form = element('form', 'live-form');
     const heading = element('h2', '', title);
+    heading.id = 'live-dialog-title';
+    dialog.setAttribute('aria-labelledby', heading.id);
     form.append(heading);
     if (note) form.append(element('p', 'muted', note));
     for (const field of fields) {
@@ -1075,10 +1178,13 @@
         input = element('select');
         if (!(field.options || []).some(([value]) => value === '')) option(input, '', 'เลือกข้อมูล');
         for (const [value, name] of field.options || []) option(input, value, name);
+      } else if (field.type === 'textarea') {
+        input = element('textarea'); input.rows = 4;
       } else {
         input = element('input'); input.type = field.type || 'text';
-        if (field.maxLength) input.maxLength = field.maxLength;
       }
+      if (field.minLength) input.minLength = field.minLength;
+      if (field.maxLength) input.maxLength = field.maxLength;
       input.name = field.name; input.required = Boolean(field.required); label.append(input); form.append(label);
       if (field.value) input.value = field.value;
     }
@@ -1091,7 +1197,7 @@
       const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
       cancel.onclick = () => dialog.close();
       form.onsubmit = (event) => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); dialog.close(); finish(values); };
-      dialog.onclose = () => { dialog.replaceChildren(); finish(null); };
+      dialog.onclose = () => { dialog.removeAttribute('aria-labelledby'); dialog.replaceChildren(); finish(null); };
       dialog.showModal();
     });
   }
@@ -1103,6 +1209,7 @@
     dialog.append(element('h2', '', `${classroom.room_name} · ${classroom.course_title}`));
     dialog.append(element('p', 'muted', `${classroom.course_code || '—'} · ${classSummary(classroom)}`));
     dialog.append(element('p', '', `ผู้สอน ${classroom.teacher_code || '—'} · ${classroom.teacher_name || '—'} · ${status(classroom.status)}`));
+    if (classroom.status === 'cancelled' && cancellationReason(classroom)) dialog.append(element('p', 'class-cancel-reason', `เหตุผลที่ยกคลาส: ${cancellationReason(classroom)}`));
     dialog.append(element('h3', '', `นักเรียนในห้อง (${classroom.roster_count ?? classroom.students?.length ?? 0} คน)`));
     const wrap = element('div', 'tablewrap'); const table = element('table');
     const head = element('thead'); const headerRow = element('tr');

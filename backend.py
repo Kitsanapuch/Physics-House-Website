@@ -766,7 +766,7 @@ class PhysicsPlusApp:
                 ).rowcount
                 outcome["dead"] += max(0, expired)
                 row = conn.execute(
-                    "SELECT id,recipient_kind,recipient_user_id,attempts,first_attempt_at "
+                    "SELECT id,event_type,recipient_kind,recipient_user_id,attempts,first_attempt_at "
                     "FROM notification_outbox "
                     "WHERE next_attempt_at<=? AND "
                     "(status='pending' OR (status='sending' AND lease_until<=?)) "
@@ -799,7 +799,10 @@ class PhysicsPlusApp:
                     active = False
             if recipient and active:
                 try:
-                    result = send_email(recipient, event_id=row["id"])
+                    if row["event_type"] == "class_cancelled":
+                        result = send_email(recipient, event_id=row["id"], event_type="class_cancelled")
+                    else:
+                        result = send_email(recipient, event_id=row["id"])
                     sent = result.sent is True
                     code = "rate_limited" if result.status == 429 else str(result.code)[:80]
                     retryable = result.retryable is True
@@ -1089,6 +1092,10 @@ class PhysicsPlusApp:
         if method == "GET" and path == "/api/teacher/classes":
             self._require_role(user, "teacher")
             return Response(200, {"classes": self._class_list(conn, teacher_id=user["id"])})
+        teacher_cancel_match = re.fullmatch(r"/api/teacher/classes/([0-9a-f]{32})/cancel", path)
+        if method == "POST" and teacher_cancel_match:
+            self._require_role(user, "teacher")
+            return self._teacher_cancel_class(conn, user, teacher_cancel_match.group(1), data)
         if method == "GET" and path == "/api/teacher/payroll":
             self._require_role(user, "teacher")
             rows = conn.execute("SELECT id,period,status,total_satang,finalized_at,paid_at FROM payroll_runs WHERE teacher_id=? AND status IN ('draft','finalized','paid') ORDER BY period DESC", (user["id"],)).fetchall()
@@ -1276,8 +1283,12 @@ class PhysicsPlusApp:
         return Response(201, {"claim_id": claim_id, "status": "pending", "amount_satang": outstanding})
 
     def _teacher_dashboard(self, conn: sqlite3.Connection, user: sqlite3.Row) -> Response:
-        rows = conn.execute("SELECT s.id,s.room_name,s.starts_at,s.ends_at,s.status,c.id course_id,c.course_code,c.title,c.subject,c.level,t.id time_entry_id,t.status time_status,t.actual_start,t.actual_end,t.amount_satang,t.rejection_reason FROM class_sessions s JOIN courses c ON c.id=s.course_id LEFT JOIN time_entries t ON t.session_id=s.id WHERE s.teacher_id=? ORDER BY s.starts_at DESC LIMIT 200", (user["id"],)).fetchall()
-        return Response(200, {"sessions": [dict(row) for row in rows]})
+        rows = conn.execute("SELECT s.id,s.room_name,s.starts_at,s.ends_at,s.status,c.id course_id,c.course_code,c.title,c.subject,c.level,t.id time_entry_id,t.status time_status,t.actual_start,t.actual_end,t.amount_satang,t.rejection_reason,CASE WHEN s.status='scheduled' AND s.starts_at>? AND t.id IS NULL AND NOT EXISTS(SELECT 1 FROM attendance a WHERE a.session_id=s.id) THEN 1 ELSE 0 END can_cancel FROM class_sessions s JOIN courses c ON c.id=s.course_id LEFT JOIN time_entries t ON t.session_id=s.id WHERE s.teacher_id=? ORDER BY s.starts_at DESC LIMIT 200", (now(), user["id"])).fetchall()
+        sessions = [dict(row) for row in rows]
+        for session in sessions:
+            session["can_cancel"] = bool(session["can_cancel"])
+        self._add_cancellation_details(conn, sessions)
+        return Response(200, {"sessions": sessions})
 
     def _submit_time(self, conn: sqlite3.Connection, user: sqlite3.Row, data: dict) -> Response:
         session_id = required_str(data, "session_id", 32)
@@ -1485,6 +1496,7 @@ class PhysicsPlusApp:
             + criterion + " ORDER BY s.starts_at DESC,s.id", args
         ).fetchall()
         classes = [dict(row) for row in rows]
+        self._add_cancellation_details(conn, classes)
         if student_id:
             return classes
         roster_sql = (
@@ -1502,6 +1514,38 @@ class PhysicsPlusApp:
         for item in classes:
             item["students"] = rosters.get(item["id"], [])
         return classes
+
+    def _add_cancellation_details(self, conn: sqlite3.Connection, classes: list[dict]) -> None:
+        """Expose the recorded reason without adding mutable columns to existing classes."""
+        for row in classes:
+            row["cancellation_reason"] = None
+            row["cancelled_at"] = None
+        cancelled_ids = [row["id"] for row in classes if row["status"] == "cancelled"]
+        if not cancelled_ids:
+            return
+        details: dict[str, tuple[str | None, int]] = {}
+        for offset in range(0, len(cancelled_ids), 300):
+            chunk = cancelled_ids[offset:offset + 300]
+            marks = ",".join("?" for _ in chunk)
+            events = conn.execute(
+                "SELECT entity_id,details,created_at FROM audit_events "
+                "WHERE entity='class_session' AND action='cancel' "
+                f"AND entity_id IN ({marks}) ORDER BY created_at DESC,id DESC",
+                chunk,
+            ).fetchall()
+            for event in events:
+                if event["entity_id"] in details:
+                    continue
+                try:
+                    reason = json.loads(event["details"]).get("reason")
+                except (TypeError, ValueError, AttributeError):
+                    reason = None
+                details[event["entity_id"]] = (
+                    reason if isinstance(reason, str) else None, event["created_at"]
+                )
+        for row in classes:
+            if row["id"] in details:
+                row["cancellation_reason"], row["cancelled_at"] = details[row["id"]]
 
     def _admin_academic(self, conn: sqlite3.Connection) -> Response:
         courses = conn.execute(
@@ -1569,6 +1613,8 @@ class PhysicsPlusApp:
         }[dataset]
         rows = conn.execute(sql + " LIMIT 1001 OFFSET ?", ((page - 1) * 1000,)).fetchall()
         exported = [dict(row) for row in rows[:1000]]
+        if dataset == "classes":
+            self._add_cancellation_details(conn, exported)
         if dataset == "teachers":
             for row in exported:
                 if row["email"] == pending_teacher_email(row["id"]):
@@ -1866,11 +1912,12 @@ class PhysicsPlusApp:
         )
 
     def _notify_class_members(self, conn: sqlite3.Connection, actor_id: str, session_id: str,
-                              action: str, member_ids: set[str]) -> None:
+                              action: str, member_ids: set[str],
+                              *, event_type: str = "class_schedule_updated") -> None:
         for member_id in sorted(member_ids):
             event_id = self.audit(conn, actor_id, "class_session", session_id, f"notify_{action}",
                                   {"recipient_user_id": member_id})
-            self.enqueue_notice(conn, event_id, "class_schedule_updated", member_id)
+            self.enqueue_notice(conn, event_id, event_type, member_id)
 
     def _edit_class_session(self, conn: sqlite3.Connection, actor: sqlite3.Row, session_id: str, data: dict) -> Response:
         old = conn.execute("SELECT * FROM class_sessions WHERE id=?", (session_id,)).fetchone()
@@ -1903,6 +1950,31 @@ class PhysicsPlusApp:
         self.audit(conn, actor["id"], "class_session", session_id, "cancel")
         self._notify_class_members(conn, actor["id"], session_id, "cancel", {row["teacher_id"], *students})
         return Response(200, {"session_id": session_id, "class_id": session_id, "status": "cancelled"})
+
+    def _teacher_cancel_class(self, conn: sqlite3.Connection, teacher: sqlite3.Row,
+                              session_id: str, data: dict) -> Response:
+        session = conn.execute("SELECT id,teacher_id,starts_at,status FROM class_sessions WHERE id=?",
+                               (session_id,)).fetchone()
+        if not session or session["teacher_id"] != teacher["id"]:
+            fail(404, "class_not_found", "Class not found")
+        if session["status"] != "scheduled" or session["starts_at"] <= now() or self._class_is_locked(conn, session_id):
+            fail(409, "class_locked", "Only an upcoming class without attendance or teaching time can be cancelled")
+        reason = " ".join(required_str(data, "reason", 300).split())
+        if len(reason) < 3 or sum(char.isalnum() for char in reason) < 2:
+            fail(400, "invalid_reason", "Enter a short, meaningful cancellation reason")
+        students = {row[0] for row in conn.execute(
+            "SELECT student_id FROM session_students WHERE session_id=?", (session_id,)
+        ).fetchall()}
+        conn.execute("UPDATE class_sessions SET status='cancelled' WHERE id=?", (session_id,))
+        event_id = self.audit(conn, teacher["id"], "class_session", session_id, "cancel",
+                              {"by_role": "teacher", "reason": reason, "roster_count": len(students)})
+        cancelled_at = conn.execute("SELECT created_at FROM audit_events WHERE id=?", (event_id,)).fetchone()[0]
+        self.enqueue_notice(conn, event_id, "class_cancelled")
+        self._notify_class_members(conn, teacher["id"], session_id, "cancel", students,
+                                   event_type="class_cancelled")
+        return Response(200, {"session_id": session_id, "class_id": session_id,
+                              "status": "cancelled", "cancellation_reason": reason,
+                              "cancelled_at": cancelled_at})
 
     def _confirm_rate(self, conn: sqlite3.Connection, user: sqlite3.Row, rate_id: str, data: dict) -> Response:
         rule = conn.execute("SELECT * FROM rate_rules WHERE id=?", (rate_id,)).fetchone()

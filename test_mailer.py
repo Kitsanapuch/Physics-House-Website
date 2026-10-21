@@ -109,6 +109,17 @@ class MailerTests(unittest.TestCase):
         self.assertNotIn("123", payload["text"])
         self.assertNotIn("student@gmail.com", payload["text"])
 
+    def test_class_cancellation_has_specific_private_resend_notice(self):
+        _Connection.responses = [_Response(200, b'{"id":"email_cancel"}')]
+        result = send_update_email("student@gmail.com", event_id="class-event-1",
+                                   event_type="class_cancelled")
+        self.assertTrue(result.sent)
+        payload = json.loads(_Connection.requests[0][2])
+        self.assertIn("ยกคลาส", payload["subject"])
+        self.assertIn("ยกคลาส", payload["text"])
+        self.assertNotIn("student@gmail.com", payload["text"])
+        self.assertNotIn("class-event-1", payload["text"])
+
     def test_rate_limit_is_retryable_without_exposing_provider_response(self):
         _Connection.responses = [_Response(429, b'{"error":"private detail"}', "30")]
         result = send_update_email("teacher@gmail.com", event_id="event-1")
@@ -148,6 +159,19 @@ class MailerTests(unittest.TestCase):
         self.assertNotIn("student@gmail.com", smtp.message.get_content())
         self.assertTrue(smtp.closed)
         self.assertNotIn("abcdefghijklmnop", str(result))
+
+    def test_class_cancellation_has_specific_private_gmail_notice(self):
+        with patch.dict(os.environ, {
+            "PH_GMAIL_USER": "physicsplus.test@gmail.com",
+            "PH_GMAIL_APP_PASSWORD": "abcdefghijklmnop",
+        }):
+            result = send_update_email("student@gmail.com", event_id="class-event-2",
+                                       event_type="class_cancelled")
+        self.assertTrue(result.sent)
+        message = _SMTP.instances[0].message
+        self.assertIn("ยกคลาส", str(message["Subject"]))
+        self.assertIn("ยกคลาส", message.get_content())
+        self.assertNotIn("student@gmail.com", message.get_content())
 
     def test_gmail_auth_and_provider_errors_are_private_and_classified(self):
         with patch.dict(os.environ, {

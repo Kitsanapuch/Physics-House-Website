@@ -19,8 +19,9 @@ body .new-section>.panel{margin-bottom:20px}
 .live-form{display:grid;gap:13px;margin-top:17px}
 .live-form label{display:grid;gap:6px;margin:0;font-size:11px;color:#666b60;font-weight:600}
 .live-form [hidden]{display:none!important}
-.live-form input,.live-form select{width:100%;min-width:0;border:1px solid #dedfd5;border-radius:8px;background:#fbfbf8;padding:10px 11px;color:#20221b;font:inherit;font-size:12px}
-.live-form input:focus,.live-form select:focus{outline:2px solid #e6c523;outline-offset:1px}
+.live-form input,.live-form select,.live-form textarea{width:100%;min-width:0;border:1px solid #dedfd5;border-radius:8px;background:#fbfbf8;padding:10px 11px;color:#20221b;font:inherit;font-size:12px}
+.live-form textarea{resize:vertical;min-height:96px;line-height:1.6}
+.live-form input:focus,.live-form select:focus,.live-form textarea:focus{outline:2px solid #e6c523;outline-offset:1px}
 .live-form button{justify-self:start;padding:10px 15px;font-size:11px}
 .live-form-grid{grid-template-columns:repeat(4,minmax(0,1fr));align-items:end}
 .live-form-grid button{min-height:39px}
@@ -57,6 +58,23 @@ body .new-section>.panel{margin-bottom:20px}
 .admin-search-label input:focus{outline:2px solid #e6c523;outline-offset:1px}
 .row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .row-actions button{font-size:10px;padding:7px 9px;white-space:nowrap}
+.row-actions .cancel-class-button{color:#9a3529;border-color:#e9bdaf;background:#fff5f2}
+.row-actions .cancel-class-button:hover,.row-actions .cancel-class-button:focus-visible{background:#fbe5df;outline:2px solid #c7634f;outline-offset:2px}
+.class-alert-list{display:grid;gap:10px;margin:0 0 18px}
+.class-alert-list:empty{display:none}
+.class-cancel-alert{padding:13px 16px;border:1px solid #e6bd99;border-left:4px solid #b84a30;border-radius:10px;background:#fff6ed;color:#5c3324}
+.class-cancel-alert strong{display:block;font-size:13px}
+.class-cancel-alert p{margin:5px 0 0;font-size:12px;line-height:1.5}
+.class-live-cancellation{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:16px 18px;margin:0 0 20px;border:1px solid #cf8d70;border-left:5px solid #a63e2b;border-radius:12px;background:#fff0df;color:#572b20;box-shadow:0 8px 24px #7b3f1b14}
+.class-live-cancellation[hidden]{display:none}
+.class-live-cancellation strong{font-size:14px}
+.class-live-cancellation p{font-size:12px;line-height:1.6;margin:7px 0 0}
+.class-live-actions{display:flex;gap:7px;flex-wrap:wrap;flex-shrink:0}
+.class-live-actions button{font-size:11px;padding:8px 11px}
+@media(max-width:680px){.class-live-cancellation{flex-direction:column}.class-live-actions{width:100%}}
+.class-cancel-reason{white-space:normal;max-width:340px;line-height:1.5;font-size:11px;color:#8d4331;margin-top:5px}
+.is-cancelled{background:#fdf8f5}
+.cancelled-status{color:#a13f2d;font-weight:700}
 .rate-note{white-space:normal;min-width:230px;max-width:340px;line-height:1.6}
 .rate-create{margin-top:19px;padding:14px;border:1px solid #ede6c9;border-radius:10px;background:#fffdf2}
 .rate-create summary{cursor:pointer;font-weight:600;font-size:12px}
