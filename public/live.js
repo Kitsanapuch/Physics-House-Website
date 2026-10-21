@@ -217,7 +217,7 @@
     $('heading').textContent = headlines[role][0];
     $('subtitle').textContent = headlines[role][1];
     const nav = role === 'student'
-      ? [['overview', 'ภาพรวม'], ['student-classes', 'ห้องเรียนของฉัน'], ['catalog', 'สมัครเรียน'], ['student-payments', 'แจ้งชำระ']]
+      ? [['overview', 'ภาพรวม'], ['student-classes', 'ห้องเรียนของฉัน'], ['catalog', 'สมัครเรียน'], ['student-payments', 'การชำระเงิน']]
       : role === 'teacher'
         ? [['overview', 'คาบสอน'], ['teacher-time', 'ลงเวลาสอน'], ['teacher-payroll', 'ค่าจ้างของฉัน']]
         : [['overview', 'ภาพรวม'], ['admin-staff', 'ครูผู้สอน'], ['admin-accounts', 'บัญชีนักเรียน'], ['admin-classroom', 'ห้องเรียน'], ['admin-enrollments', 'การสมัครเรียน'], ['admin-finance', 'ค่าเรียน'], ['admin-teaching', 'เวลาสอน'], ['admin-rates', 'อัตราค่าจ้าง'], ['admin-management', 'รายวิชา'], ['admin-payroll', 'จ่ายค่าจ้าง'], ['admin-reports', 'ส่งออกข้อมูล']];
@@ -243,7 +243,7 @@
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>ยอดค้างชำระ</span><strong id="student-outstanding">—</strong><small>จากใบแจ้งยอดของคุณ</small></div><div class="stat"><span>คอร์สที่ลงเรียน</span><strong id="student-course-count">—</strong><small>ข้อมูลจากบัญชีของคุณ</small></div><div class="stat"><span>รายการแจ้งชำระรอตรวจ</span><strong id="student-claim-count">—</strong><small>ผู้ดูแลจะตรวจหลักฐานอ้างอิง</small></div></div><section class="panel"><div class="panel-head"><div><h2>คอร์สและใบแจ้งยอดของฉัน</h2><p class="muted">ยอดคงเหลือคำนวณจากรายการชำระที่ผู้ดูแลบันทึกแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>คอร์ส</th><th>เลขที่ใบแจ้งยอด</th><th>ยอดทั้งหมด</th><th>คงเหลือ</th><th>ครบกำหนด</th><th>สถานะ</th></tr></thead><tbody id="student-enrollments"></tbody></table></div></section></section>
       <section id="student-classes" class="panel new-section"><div class="panel-head"><div><h2>ห้องเรียนและตารางเรียนของฉัน</h2><p class="muted">ผู้ดูแลเป็นผู้จัดห้อง ครู เวลา และรายชื่อทุกคน หลังจัดเข้าห้องแล้วจะแสดงที่นี่</p></div></div><div class="tablewrap"><table><thead><tr><th>รหัสวิชา / คอร์ส</th><th>ห้อง</th><th>วันและเวลา</th><th>ผู้สอน</th><th>สถานะ</th></tr></thead><tbody id="student-classes-rows"></tbody></table></div></section>
       <section id="catalog" class="panel new-section"><div class="panel-head"><div><h2>สมัครเรียน</h2><p class="muted">เลือกคอร์สแล้วกรอกระดับชั้น โรงเรียน และข้อมูลผู้ปกครอง ผู้ดูแลจะแจ้งยอดค่าเรียนในระบบภายหลัง</p></div></div><div class="course-grid" id="course-grid"></div></section>
-      <section id="student-payments" class="grid new-section"><div class="panel"><h2>แจ้งชำระค่าเรียน</h2><p class="muted">เลือกใบแจ้งยอดที่ผู้ดูแลกำหนด แล้วกรอกเลขอ้างอิงการโอนเพื่อตรวจสอบ</p><form data-action="student-claim" class="live-form"><label>ใบแจ้งยอด<select name="invoice_id" id="claim-invoice" required></select></label><p class="muted" id="claim-display-amount">ยอดที่ต้องชำระ: เลือกใบแจ้งยอดก่อน</p><label>เลขอ้างอิงการโอน<input name="reference" required maxlength="120" autocomplete="off"></label><button class="primary" type="submit">ส่งรายการแจ้งชำระ</button></form><p class="foot">ยอดชำระกำหนดโดยผู้ดูแล นักเรียนแก้ไขเองไม่ได้ · รายละเอียดบัญชีรับโอนจะแจ้งภายหลัง</p></div><div class="panel"><h2>รายการแจ้งชำระที่ส่งแล้ว</h2><div class="tablewrap"><table><thead><tr><th>วันที่</th><th>จำนวน</th><th>เลขอ้างอิง</th><th>สถานะ</th></tr></thead><tbody id="student-claims"></tbody></table></div></div></section>`;
+      <section id="student-payments" class="new-section"><div class="grid"><div class="panel"><h2>แจ้งชำระค่าเรียน</h2><p class="muted">เลือกใบแจ้งยอดที่ผู้ดูแลกำหนด แล้วกรอกเลขอ้างอิงการโอนเพื่อตรวจสอบ</p><form data-action="student-claim" class="live-form"><label>ใบแจ้งยอด<select name="invoice_id" id="claim-invoice" required></select></label><p class="muted" id="claim-display-amount">ยอดที่ต้องชำระ: เลือกใบแจ้งยอดก่อน</p><label>เลขอ้างอิงการโอน<input name="reference" required maxlength="120" autocomplete="off"></label><button class="primary" type="submit">ส่งรายการแจ้งชำระ</button></form><p class="foot">ยอดชำระกำหนดโดยผู้ดูแล นักเรียนแก้ไขเองไม่ได้ · รายละเอียดบัญชีรับโอนจะแจ้งภายหลัง</p></div><div class="panel"><h2>รายการแจ้งชำระที่ส่งแล้ว</h2><div class="tablewrap"><table><thead><tr><th>วันที่</th><th>จำนวน</th><th>เลขอ้างอิง</th><th>สถานะ</th></tr></thead><tbody id="student-claims"></tbody></table></div></div></div><section class="panel receipt-panel"><div class="panel-head"><div><h2>ใบสำคัญรับเงินของฉัน</h2><p class="muted">ออกตามคอร์สที่สมัครและยอดรับจริง ดาวน์โหลด PDF ได้หลังผู้ดูแลตรวจสอบและยืนยันรับเงินแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>เลขที่ใบสำคัญ</th><th>คอร์ส / ใบแจ้งยอด</th><th>วันที่รับเงิน</th><th>จำนวนที่รับ</th><th>เอกสาร</th></tr></thead><tbody id="student-receipts"></tbody></table></div></section></section>`;
     if (role === 'teacher') return `
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>คาบที่ได้รับมอบหมาย</span><strong id="teacher-session-count">—</strong><small>จากตารางสอนจริง</small></div><div class="stat"><span>รายการลงเวลารอตรวจ</span><strong id="teacher-pending-count">—</strong><small>ผู้ดูแลต้องอนุมัติ</small></div><div class="stat"><span>ค่าจ้างที่จ่ายแล้ว</span><strong id="teacher-paid-total">—</strong><small>จากงวดค่าจ้างของคุณ</small></div></div><section class="panel"><div class="panel-head"><div><h2>ตารางสอนและสถานะเวลาสอน</h2><p class="muted">เลือกเช็กชื่อในคาบที่มีนักเรียน และลงเวลาหลังสอนจริง</p></div></div><div class="tablewrap"><table><thead><tr><th>คาบ / คอร์ส</th><th>ห้อง / เวลา</th><th>นักเรียน</th><th>สถานะ</th><th>เวลาสอน</th><th>ดำเนินการ</th></tr></thead><tbody id="teacher-sessions"></tbody></table></div></section></section>
       <section id="teacher-time" class="panel new-section"><h2>ลงเวลาสอนจริง</h2><p class="muted">เวลาอ้างอิงประเทศไทย (UTC+7) บันทึกได้หลังสอนเสร็จ และต้องใกล้คาบที่กำหนด</p><form data-action="teacher-time" class="live-form live-form-grid"><label>คาบเรียน<select name="session_id" id="time-session" required></select></label><label>เริ่มสอนจริง<input name="actual_start" id="actual-start" type="datetime-local" required></label><label>เลิกสอนจริง<input name="actual_end" id="actual-end" type="datetime-local" required></label><label>พัก (นาที)<input name="break_minutes" type="number" min="0" max="480" value="0" required></label><button type="submit" class="primary">ส่งเวลาสอนให้ตรวจ</button></form><p class="foot">ระบบจะตรวจเวลาซ้อนและคำนวณค่าจ้างหลังผู้ดูแลเช็กชื่อครบและยืนยันอัตราแล้ว</p></section>
@@ -257,9 +257,9 @@
       <section id="admin-rates" class="panel new-section"><h2>อัตราค่าจ้างครู</h2><p class="muted">อัตรากลางที่ยืนยันแล้วใช้คำนวณค่าจ้างทุกวิชาและทุกครูตามระดับชั้นกับจำนวนผู้เรียน 1–3, 4–6, 7–9 และ 10–13 คน หากมีข้อตกลงเฉพาะครูหรือวิชา ให้เพิ่มอัตราเฉพาะพร้อมแหล่งอ้างอิง</p><div class="tablewrap"><table><thead><tr><th>ขอบเขต / วิชา / ระดับ</th><th>ผู้เรียน</th><th>บาทต่อชั่วโมง</th><th>สถานะ</th><th>ที่มา / ข้อสังเกต</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-rates-rows"></tbody></table></div><details class="rate-create"><summary>เพิ่มอัตราค่าจ้างที่ตรวจสอบแล้ว</summary><form data-action="admin-rate-create" class="live-form live-form-grid"><label>ขอบเขต<select name="scope" id="rate-scope" required><option value="global">อัตรากลางทุกครู</option><option value="teacher">เฉพาะครู</option></select></label><label id="rate-teacher-field" hidden>ครู<select name="teacher_id" id="rate-teacher"></select></label><label id="rate-subject-field" hidden>วิชา<select name="subject" id="rate-subject" required><option value="all">ทุกวิชา</option><option value="science">วิทยาศาสตร์</option><option value="math">คณิตศาสตร์</option><option value="physics">ฟิสิกส์</option><option value="chemistry">เคมี</option><option value="biology">ชีววิทยา</option><option value="chemistry_biology">เคมี/ชีววิทยา</option><option value="english">อังกฤษ</option><option value="thai">ไทย</option><option value="social">สังคม</option><option value="other">อื่น ๆ</option></select></label><label>ระดับ<select name="level"><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>จำนวนนักเรียนต่ำสุด<input name="min_students" type="number" min="1" max="100" required></label><label>จำนวนนักเรียนสูงสุด<input name="max_students" type="number" min="1" max="100" required></label><label>บาทต่อชั่วโมง<input name="rate" inputmode="decimal" required></label><label>เริ่มใช้<input name="effective_from" type="date" required></label><label>สิ้นสุด (ถ้ามี)<input name="effective_to" type="date"></label><label class="wide-field">ที่มา/หลักฐานของอัตรา<input name="source_note" required maxlength="250" placeholder="เช่น แถวในชีตอัตราค่าจ้าง หรือข้อตกลงที่ยืนยันแล้ว"></label><button type="submit" class="primary">บันทึกอัตราที่ยืนยันแล้ว</button></form></details></section>
       <section id="admin-classroom" class="new-section"><section class="panel"><div class="panel-head"><div><h2>จัดห้องเรียนและตารางเรียน</h2><p class="muted">ผู้ดูแลเป็นผู้กำหนดห้อง ครู วันเวลา และรายชื่อนักเรียนทุกคน ไม่มีการจัดเข้าห้องอัตโนมัติ</p></div></div><form data-action="admin-class-create" class="live-form live-form-grid"><label>คอร์ส / รหัสวิชา<select name="course_id" id="class-course" required></select></label><label>ครูผู้สอน<select name="teacher_id" id="class-teacher" required></select></label><label>ห้องเรียน<input name="room_name" required maxlength="80" placeholder="เช่น ห้อง A / ออนไลน์ 1"></label><label>เริ่มเรียน (เวลาไทย)<input name="starts_at" type="datetime-local" required></label><label>เลิกเรียน (เวลาไทย)<input name="ends_at" type="datetime-local" required></label><fieldset class="class-roster-field wide-field"><legend>เลือกรายชื่อนักเรียนในห้อง</legend><p class="foot">แสดงเฉพาะผู้สมัครคอร์สที่เลือก กรุณาตรวจชื่อก่อนบันทึก</p><div id="admin-class-students" class="class-student-picker"></div></fieldset><button type="submit" class="primary">สร้างห้องเรียนตามที่จัด</button></form></section><section class="panel"><h2>ห้องเรียนทั้งหมด</h2><p class="muted">เปิดรายชื่อเพื่อดูผู้เรียน เปลี่ยนห้อง เวลา ครู หรือจัดรายชื่อใหม่ได้ก่อนคาบเริ่มและตามเงื่อนไขของระบบ</p><div class="tablewrap"><table><thead><tr><th>คอร์ส / รหัสวิชา</th><th>ห้อง</th><th>วันและเวลา</th><th>ครูผู้สอน</th><th>รายชื่อที่จัด</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-classes-rows"></tbody></table></div></section></section>
       <section id="admin-enrollments" class="panel new-section"><h2>จัดการการสมัครเรียน</h2><p class="muted">ผู้ดูแลเพิ่ม ยกเลิก หรือคืนสถานะการสมัครเรียนได้ การสมัครเรียนไม่จัดเข้าห้องโดยอัตโนมัติ</p><form data-action="admin-enrollment-create" class="live-form live-form-grid"><label>คอร์ส<select name="course_id" id="admin-enroll-course" required></select></label><label>นักเรียน<select name="student_id" id="admin-enroll-student" required></select></label><button type="submit" class="primary">เพิ่มนักเรียนในคอร์ส</button></form><div class="tablewrap"><table><thead><tr><th>รหัสนักเรียน / ชื่อ</th><th>คอร์ส / รหัสวิชา</th><th>สถานะ</th><th>สมัครเมื่อ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-enrollment-rows"></tbody></table></div></section>
-      <section id="admin-management" class="new-section"><section class="panel"><h2>สร้างคอร์สตามรายวิชาของร้าน</h2><p class="muted">มัธยมต้น: วิทยาศาสตร์ คณิตศาสตร์ ภาษาอังกฤษ · มัธยมปลาย: ฟิสิกส์ เคมี ชีวะ คณิตศาสตร์ ภาษาอังกฤษ ผู้ดูแลกำหนดราคาคอร์สได้เอง และระบบสร้างรหัสคอร์สไม่ซ้ำกัน</p><form data-action="admin-course" class="live-form live-form-grid"><label>ระดับ<select name="level" id="course-level" required><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>รายวิชา<select name="subject" id="course-subject" required></select></label><label>ราคาคอร์ส (บาท)<input id="course-price" name="price" inputmode="decimal" required maxlength="12" aria-describedby="course-price-hint"></label><label>จำนวนนักเรียนสูงสุด<input name="capacity" type="number" min="1" max="100" required></label><label>ครูประจำคอร์ส<select name="teacher_id" id="course-teacher" required></select></label><button type="submit" class="primary">สร้างคอร์สและรหัสวิชา</button></form><p class="foot" id="course-price-hint">ราคาเริ่มต้นเป็นเพียงตัวอย่าง ผู้ดูแลแก้ไขได้ และเป็นราคาแสดงในหน้าสมัครเรียน ใบแจ้งยอดจริงยังให้ผู้ดูแลตรวจและออกภายหลัง</p></section><section class="panel"><h2>คอร์สทั้งหมด</h2><div class="tablewrap"><table><thead><tr><th>รหัสคอร์ส</th><th>วิชา / ระดับ</th><th>ราคา</th><th>ครูประจำ</th><th>จำนวนที่สมัคร</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-course-rows"></tbody></table></div></section></section>
+      <section id="admin-management" class="new-section"><section class="panel"><h2>สร้างคอร์สตามรายวิชาของร้าน</h2><p class="muted">มัธยมต้น: วิทยาศาสตร์ คณิตศาสตร์ ภาษาอังกฤษ · มัธยมปลาย: ฟิสิกส์ เคมี ชีวะ คณิตศาสตร์ ภาษาอังกฤษ ผู้ดูแลกำหนดราคาคอร์สได้เอง และระบบสร้างรหัสคอร์สไม่ซ้ำกัน</p><form data-action="admin-course" class="live-form live-form-grid"><label>ระดับ<select name="level" id="course-level" required><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>รายวิชา<select name="subject" id="course-subject" required></select></label><label>ราคาคอร์ส (บาท)<input id="course-price" name="price" inputmode="decimal" required maxlength="12" aria-describedby="course-price-hint"></label><label>จำนวนนักเรียนสูงสุด<input name="capacity" type="number" min="1" max="100" required></label><label>ครูประจำคอร์ส (กำหนดภายหลังได้)<select name="teacher_id" id="course-teacher"></select></label><button type="submit" class="primary">สร้างคอร์สและรหัสวิชา</button></form><p class="foot" id="course-price-hint">ราคาเริ่มต้นเป็นเพียงตัวอย่าง ผู้ดูแลแก้ไขได้ และเป็นราคาแสดงในหน้าสมัครเรียน ใบแจ้งยอดจริงยังให้ผู้ดูแลตรวจและออกภายหลัง</p></section><section class="panel"><h2>คอร์สทั้งหมด</h2><p class="muted">คอร์สที่ยังไม่กำหนดครูสมัครเรียนได้ ผู้ดูแลต้องเลือกครูเองก่อนจัดห้องเรียน</p><div class="tablewrap"><table><thead><tr><th>รหัสคอร์ส</th><th>วิชา / ระดับ</th><th>ราคา</th><th>ครูประจำ</th><th>จำนวนที่สมัคร</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-course-rows"></tbody></table></div></section></section>
       <section id="admin-payroll" class="panel new-section"><h2>งวดจ่ายค่าจ้างครู</h2><p class="muted">สร้างงวดจากเวลาสอนที่อนุมัติแล้ว จากนั้นตรวจยอด ปิดงวด และบันทึกเลขอ้างอิงการจ่าย</p><form data-action="admin-payroll-create" class="live-form live-form-grid"><label>ครู<select name="teacher_id" id="payroll-teacher" required></select></label><label>เดือนงวด<input name="period" type="month" required></label><button type="submit" class="primary">สร้างงวดร่าง</button></form><div class="tablewrap"><table><thead><tr><th>ครู / งวด</th><th>ยอด</th><th>สถานะ</th><th>จ่ายเมื่อ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-payroll-rows"></tbody></table></div></section>
-      <section id="admin-reports" class="panel new-section"><h2>ส่งออกข้อมูลสำหรับ Google Sheets</h2><p class="muted">เลือกชุดข้อมูลเพื่อดาวน์โหลด CSV แล้วนำเข้าใน Google Sheets ของร้าน ข้อมูลต้นฉบับอยู่ในฐานข้อมูลของระบบ</p><div class="report-controls"><label for="report-kind">ชุดข้อมูล</label><select id="report-kind"><option value="students">นักเรียนและข้อมูลผู้ปกครอง</option><option value="teachers">ครู</option><option value="courses">คอร์สเรียน</option><option value="classes">ห้องเรียนและตารางสอน</option><option value="class_rosters">รายชื่อในห้องและการเข้าเรียน</option><option value="enrollments">การสมัครเรียน</option><option value="invoices">ใบแจ้งยอด</option><option value="payments">การรับเงิน</option><option value="claims">รายการแจ้งชำระ</option><option value="teaching">เวลาสอน</option><option value="payroll">งวดค่าจ้าง</option><option value="rates">อัตราค่าจ้าง</option></select><button type="button" class="primary" data-action="export-report">ดาวน์โหลด CSV</button></div><p class="foot">ไฟล์นักเรียนมีข้อมูลผู้ปกครอง กรุณาเก็บใน Google Sheet ที่จำกัดสิทธิ์เฉพาะผู้ดูแล</p></section>`;
+      <section id="admin-reports" class="panel new-section"><h2>ส่งออกข้อมูลสำหรับ Google Sheets</h2><p class="muted">เลือกชุดข้อมูลเพื่อดาวน์โหลด CSV แล้วนำเข้าใน Google Sheets ของร้าน ข้อมูลต้นฉบับอยู่ในฐานข้อมูลของระบบ</p><div class="report-controls"><label for="report-kind">ชุดข้อมูล</label><select id="report-kind"><option value="students">นักเรียนและข้อมูลผู้ปกครอง</option><option value="teachers">ครู</option><option value="courses">คอร์สเรียน</option><option value="classes">ห้องเรียนและตารางสอน</option><option value="class_rosters">รายชื่อในห้องและการเข้าเรียน</option><option value="enrollments">การสมัครเรียน</option><option value="invoices">ใบแจ้งยอด</option><option value="payments">การรับเงิน</option><option value="receipts">ใบสำคัญรับเงิน</option><option value="claims">รายการแจ้งชำระ</option><option value="teaching">เวลาสอน</option><option value="payroll">งวดค่าจ้าง</option><option value="rates">อัตราค่าจ้าง</option></select><button type="button" class="primary" data-action="export-report">ดาวน์โหลด CSV</button></div><p class="foot">ไฟล์นักเรียนมีข้อมูลผู้ปกครอง กรุณาเก็บใน Google Sheet ที่จำกัดสิทธิ์เฉพาะผู้ดูแล</p></section>`;
   }
 
   async function load() {
@@ -277,7 +277,7 @@
       const [dashboard, rates, catalog, payroll, users, tuition, academic] = await Promise.all([
         api('/api/admin/dashboard'), api('/api/admin/rates'), api('/api/courses'), api('/api/admin/payroll-runs'), api('/api/admin/users'), api('/api/admin/invoices'), api('/api/admin/academic')
       ]);
-      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], users: academic.users || users.users || [], unbilled_enrollments: tuition.enrollments || [] };
+      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || users.users || [], unbilled_enrollments: tuition.enrollments || [] };
       state.courses = catalog.courses || [];
       state.academic = academic;
       state.classes = academic.classes || [];
@@ -329,7 +329,7 @@
       const card = element('article', 'course-card');
       const tag = element('span', 'subject-tag', `${subjectLabel(course.subject)} · ${levelNames[course.level] || '—'}`);
       const title = element('h3', '', course.title);
-      const teacher = element('p', 'muted', `ครู ${course.teacher_name}`);
+      const teacher = element('p', course.teacher_name ? 'muted' : 'muted awaiting-teacher', course.teacher_name ? `ครูผู้สอน: ${course.teacher_name}` : 'รอผู้ดูแลจัดครูผู้สอน');
       const price = element('strong', 'course-price', thaiMoney(course.price_satang));
       const note = element('p', 'muted', 'ผู้ดูแลจะออกใบแจ้งยอดหลังสมัครเรียน');
       const seats = element('p', 'muted', `รับ ${course.enrolled_count}/${course.capacity} คน`);
@@ -353,6 +353,24 @@
       const row = element('tr');
       cell(row, thaiDateTime(claim.created_at)); cell(row, thaiMoney(claim.amount_satang));
       cell(row, claim.reference); cell(row, status(claim.status)); claimBody.append(row);
+    }
+    const receiptBody = $('student-receipts');
+    const receipts = state.data.receipts || [];
+    if (!receipts.length) emptyRow(receiptBody, 5, 'ยังไม่มีใบสำคัญรับเงิน เมื่อผู้ดูแลยืนยันการรับเงิน เอกสารจะปรากฏที่นี่');
+    for (const receipt of receipts) {
+      const row = element('tr');
+      cell(row, receipt.receipt_number, 'record-code');
+      const purchase = cell(row, receipt.course_title || receipt.description || 'ค่าเรียน');
+      if (receipt.course_code) purchase.prepend(element('div', 'record-code', receipt.course_code));
+      purchase.append(element('div', 'muted', receipt.invoice_number));
+      cell(row, thaiDateTime(receipt.paid_at));
+      cell(row, thaiMoney(receipt.amount_satang));
+      const link = element('a', 'receipt-download', 'ดาวน์โหลด PDF');
+      link.href = `/api/receipts/${validId(receipt.id)}.pdf`;
+      link.download = `${receipt.receipt_number}.pdf`;
+      link.setAttribute('aria-label', `ดาวน์โหลดใบสำคัญรับเงิน ${receipt.receipt_number}`);
+      cell(row, '').append(link);
+      receiptBody.append(row);
     }
   }
 
@@ -619,6 +637,36 @@
       const invoice = invoices.find((item) => item.id === invoiceSelect.value);
       $('payment-amount').value = invoice ? ((invoice.amount_satang - invoice.paid_satang) / 100).toFixed(2) : '';
     });
+    const receiptPanel = element('section', 'panel receipt-panel');
+    receiptPanel.append(element('h2', '', 'ใบสำคัญรับเงินที่ออกแล้ว'));
+    receiptPanel.append(element('p', 'muted', 'แสดง 200 รายการล่าสุด ออกตามคำสั่งสมัครคอร์สและยอดที่ตรวจรับจริง'));
+    const receiptWrap = element('div', 'tablewrap');
+    const receiptTable = element('table');
+    const receiptHead = element('thead');
+    const receiptHeadRow = element('tr');
+    for (const label of ['เลขที่', 'นักเรียน / คอร์ส', 'วันที่รับเงิน', 'ยอดรับจริง', 'เอกสาร']) receiptHeadRow.append(element('th', '', label));
+    receiptHead.append(receiptHeadRow);
+    const receiptRows = element('tbody');
+    const issued = state.data.receipts || [];
+    if (!issued.length) emptyRow(receiptRows, 5, 'ยังไม่มีใบสำคัญรับเงิน');
+    for (const receipt of issued) {
+      const row = element('tr');
+      cell(row, receipt.receipt_number, 'record-code');
+      const purchase = cell(row, receipt.student_name);
+      purchase.append(element('div', 'muted', `${receipt.course_code ? `${receipt.course_code} · ` : ''}${receipt.course_title || receipt.description || 'ค่าเรียน'}`));
+      cell(row, thaiDateTime(receipt.paid_at));
+      cell(row, thaiMoney(receipt.amount_satang));
+      const link = element('a', 'receipt-download', 'ดาวน์โหลด PDF');
+      link.href = `/api/receipts/${validId(receipt.id)}.pdf`;
+      link.download = `${receipt.receipt_number}.pdf`;
+      link.setAttribute('aria-label', `ดาวน์โหลดใบสำคัญรับเงิน ${receipt.receipt_number}`);
+      cell(row, '').append(link);
+      receiptRows.append(row);
+    }
+    receiptTable.append(receiptHead, receiptRows);
+    receiptWrap.append(receiptTable);
+    receiptPanel.append(receiptWrap);
+    $('admin-finance').append(receiptPanel);
     const timeBody = $('admin-times');
     if (!times.length) emptyRow(timeBody, 5, 'ไม่มีเวลาสอนรอตรวจ');
     for (const item of times) {
@@ -643,7 +691,7 @@
     }
     const assignableTeachers = teachers.filter((person) => person.status === 'active' || person.roster_pending);
     for (const id of ['course-teacher', 'class-teacher', 'payroll-teacher', 'rate-teacher']) {
-      const select = $(id); option(select, '', 'เลือกครู');
+      const select = $(id); option(select, '', id === 'course-teacher' ? 'ยังไม่กำหนด — จัดครูภายหลัง' : 'เลือกครู');
       for (const teacher of assignableTeachers) option(select, teacher.id, `${teacher.teacher_code || '—'} · ${teacher.name}${teacher.roster_pending ? ' · รอเปิดบัญชี' : ''}`);
     }
     const rateScope = $('rate-scope');
@@ -676,10 +724,10 @@
       const row = element('tr');
       cell(row, course.course_code || '—', 'record-code');
       cell(row, `${subjectLabel(course.subject)} · ${levelNames[course.level] || '—'}`);
-      cell(row, thaiMoney(course.price_satang)); cell(row, course.teacher_name || '—');
+      cell(row, thaiMoney(course.price_satang)); cell(row, course.teacher_name || 'รอผู้ดูแลจัดครู', course.teacher_name ? '' : 'awaiting-teacher');
       cell(row, `${course.enrolled_count ?? 0}/${course.capacity}`);
       cell(row, course.active ? 'เปิดรับ' : 'ปิดรับ');
-      cell(row, '').append(actionButton('แก้ไขคอร์ส', 'course-edit', course.id));
+      cell(row, '').append(actionButton(course.teacher_id ? 'แก้ไขคอร์ส' : 'กำหนดครู / แก้ไข', 'course-edit', course.id));
       courseBody.append(row);
     }
     const classBody = $('admin-classes-rows');
@@ -750,7 +798,7 @@
           await load(); showCredential(created); message = 'สร้างบัญชีแล้ว'; break;
         }
         case 'admin-course':
-          await api('/api/admin/courses', 'POST', { subject: values.subject, level: values.level, price_satang: toSatang(values.price), teacher_id: validId(values.teacher_id), capacity: Number(values.capacity) });
+          await api('/api/admin/courses', 'POST', { subject: values.subject, level: values.level, price_satang: toSatang(values.price), teacher_id: values.teacher_id ? validId(values.teacher_id) : null, capacity: Number(values.capacity) });
           message = 'สร้างคอร์สและรหัสวิชาแล้ว'; break;
         case 'admin-class-create':
           await api('/api/admin/classes', 'POST', {
@@ -879,13 +927,13 @@
             .map((person) => [person.id, `${person.teacher_code || '—'} · ${person.name}${person.login_enabled ? '' : ' · ยังไม่เปิดบัญชี'}`]);
           const answer = await fieldsDialog(`แก้ไขคอร์ส ${course.course_code}`, [
             { name: 'price', label: 'ราคาคอร์ส (บาท)', type: 'text', required: true, maxLength: 12, value: (Number(course.price_satang) / 100).toFixed(2) },
-            { name: 'teacher_id', label: 'ครูประจำคอร์ส', type: 'select', required: true, value: course.teacher_id, options: teacherOptions },
+            { name: 'teacher_id', label: 'ครูประจำคอร์ส', type: 'select', value: course.teacher_id, options: [['', 'ยังไม่กำหนด — จัดครูภายหลัง'], ...teacherOptions] },
             { name: 'capacity', label: 'จำนวนนักเรียนสูงสุด', type: 'number', required: true, value: course.capacity },
             { name: 'active', label: 'สถานะเปิดรับ', type: 'select', required: true, value: course.active ? 'true' : 'false', options: [['true', 'เปิดรับสมัคร'], ['false', 'ปิดรับสมัคร']] }
           ], 'บันทึกคอร์ส', 'รายวิชา ระดับ และรหัสคอร์สคงเดิม ราคาใหม่จะแสดงในหน้าสมัครเรียน แต่ใบแจ้งยอดที่ออกแล้วไม่เปลี่ยนตาม');
           if (!answer) return;
           await api(`/api/admin/courses/${id}`, 'PUT', {
-            price_satang: toSatang(answer.price), teacher_id: validId(answer.teacher_id), capacity: Number(answer.capacity), active: answer.active === 'true'
+            price_satang: toSatang(answer.price), teacher_id: answer.teacher_id ? validId(answer.teacher_id) : null, capacity: Number(answer.capacity), active: answer.active === 'true'
           });
           message = 'แก้ไขคอร์สแล้ว'; break;
         }
@@ -1024,7 +1072,8 @@
       const label = element('label', '', field.label);
       let input;
       if (field.type === 'select') {
-        input = element('select'); option(input, '', 'เลือกข้อมูล');
+        input = element('select');
+        if (!(field.options || []).some(([value]) => value === '')) option(input, '', 'เลือกข้อมูล');
         for (const [value, name] of field.options || []) option(input, value, name);
       } else {
         input = element('input'); input.type = field.type || 'text';

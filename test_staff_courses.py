@@ -1,10 +1,13 @@
 """Business and security checks for editable courses and teacher roster accounts."""
 
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
-from backend import PhysicsPlusApp, BRAND_CODES_MIGRATION, migrate_academic_schema, migrate_brand_codes
+from backend import (PhysicsPlusApp, BRAND_CODES_MIGRATION, COURSE_CATALOG, SCHEMA,
+                     migrate_academic_schema, migrate_brand_codes,
+                     migrate_nullable_course_teachers, seed_initial_courses)
 
 
 class StaffCourseTests(unittest.TestCase):
@@ -23,6 +26,82 @@ class StaffCourseTests(unittest.TestCase):
 
     def request(self, method, path, data=None):
         return self.owner.handle(method, path, data, self.auth, "127.0.0.1")
+
+    def test_initial_catalog_is_live_unassigned_and_admin_prices_survive_reinitialization(self):
+        listed = self.request("GET", "/api/courses").body["courses"]
+        self.assertEqual(len(listed), 8)
+        self.assertEqual({(row["level"], row["subject"]) for row in listed}, set(COURSE_CATALOG))
+        self.assertTrue(all(row["teacher_name"] is None for row in listed))
+        self.assertTrue(all(row["price_satang"] == (350_000 if row["level"] == "middle" else 450_000)
+                            for row in listed))
+        target = next(row for row in listed if row["subject"] == "physics")
+        updated = self.request("PUT", f"/api/admin/courses/{target['id']}",
+                               {"price_satang": 475_000})
+        self.assertEqual(updated.status, 200, updated.body)
+        with self.owner.connect() as conn:
+            seed_initial_courses(conn)
+        self.owner._init_db()
+        updated_list = self.request("GET", "/api/courses").body["courses"]
+        self.assertEqual(len(updated_list), 8)
+        self.assertEqual(next(row for row in updated_list if row["id"] == target["id"])["price_satang"], 475_000)
+        academic = self.request("GET", "/api/admin/academic").body["courses"]
+        self.assertEqual(len(academic), 8)
+        self.assertTrue(all(row["teacher_id"] is None for row in academic))
+        report = self.request("GET", "/api/admin/reports/courses").body["rows"]
+        self.assertEqual(len(report), 8)
+        self.assertTrue(all(row["teacher_name"] is None for row in report))
+
+    def test_existing_course_rebuild_keeps_child_records_and_foreign_keys(self):
+        legacy_schema = SCHEMA.replace("teacher_id TEXT REFERENCES users(id),\n  capacity",
+                                       "teacher_id TEXT NOT NULL REFERENCES users(id),\n  capacity")
+        self.assertNotEqual(legacy_schema, SCHEMA)
+        conn = sqlite3.connect(":memory:", isolation_level=None)
+        self.addCleanup(conn.close)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(legacy_schema)
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?)",
+                     ("teacher", "teacher@example.com", "Teacher", "unused", "teacher", 1))
+        conn.execute("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?)",
+                     ("student", "student@example.com", "Student", "unused", "student", 1))
+        conn.execute(
+            "INSERT INTO courses(id,course_code,subject_code,title,subject,level,price_satang,teacher_id,capacity,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ("old-course", "PP-H-PHY-000001", "H-PHY", "ฟิสิกส์ ม.ปลาย", "physics", "high",
+             525_000, "teacher", 13, 1),
+        )
+        conn.execute("INSERT INTO enrollments(id,course_id,student_id,created_at) VALUES(?,?,?,?)",
+                     ("enrollment", "old-course", "student", 1))
+        conn.execute(
+            "INSERT INTO class_sessions(id,course_id,room_name,teacher_id,starts_at,ends_at,created_at) "
+            "VALUES(?,?,?,?,?,?,?)", ("class", "old-course", "A", "teacher", 100, 200, 1),
+        )
+        conn.execute(
+            "INSERT INTO invoices(id,invoice_number,enrollment_id,student_id,description,amount_satang,due_date,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            ("invoice", "PP-20261021-ABC", "enrollment", "student", "Tuition", 525_000,
+             "2026-10-31", 1),
+        )
+        migrate_nullable_course_teachers(conn)
+        migrate_nullable_course_teachers(conn)
+        self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+        self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertEqual(next(row[3] for row in conn.execute("PRAGMA table_info(courses)")
+                              if row[1] == "teacher_id"), 0)
+        self.assertEqual(tuple(conn.execute("SELECT teacher_id,price_satang FROM courses WHERE id='old-course'").fetchone()),
+                         ("teacher", 525_000))
+        self.assertEqual(conn.execute("SELECT course_id FROM enrollments WHERE id='enrollment'").fetchone()[0], "old-course")
+        self.assertEqual(conn.execute("SELECT course_id FROM class_sessions WHERE id='class'").fetchone()[0], "old-course")
+        self.assertEqual(conn.execute("SELECT amount_satang FROM invoices WHERE id='invoice'").fetchone()[0], 525_000)
+        conn.execute(
+            "INSERT INTO courses(id,course_code,subject_code,title,subject,level,price_satang,teacher_id,capacity,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ("new-course", "PP-M-MAT-000001", "M-MAT", "คณิตศาสตร์ ม.ต้น", "math", "middle",
+             350_000, None, 13, 2),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO enrollments(id,course_id,student_id,created_at) VALUES(?,?,?,?)",
+                         ("orphan", "missing", "student", 2))
 
     def test_pending_roster_is_assignable_but_cannot_log_in_until_activation(self):
         users = self.request("GET", "/api/admin/users").body["users"]

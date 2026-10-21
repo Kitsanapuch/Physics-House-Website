@@ -6,6 +6,7 @@ import ipaddress
 import json
 import os
 import hmac
+import re
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -17,6 +18,7 @@ from turso_serverless.protocol import ProtocolError
 from backend import MAX_BODY, Response
 from mailer import delivery_configured, send_update_email
 from remote import RemotePhysicsPlusApp
+from receipt_pdf import render_receipt_pdf
 
 
 PUBLIC_DIR = Path(__file__).resolve().parent / "public"
@@ -118,6 +120,34 @@ def retry_notifications():
     except (DatabaseError, ProtocolError, RuntimeError, ValueError):
         return _error(503, "notification_retry_unavailable", "Retry is temporarily unavailable")
     return _json_response(Response(200, {"ok": True, "delivery": "configured" if result is not None else "disabled", "batch": result}))
+
+
+@app.get("/api/receipts/<receipt_id>.pdf")
+def receipt_download(receipt_id: str):
+    if not re.fullmatch(r"[0-9a-f]{32}", receipt_id):
+        return _error(404, "receipt_not_found", "Receipt not found")
+    headers = {key.lower(): value for key, value in request.headers.items()}
+    try:
+        result = _backend().handle("GET", f"/api/receipts/{receipt_id}", None, headers, _client_ip())
+    except (DatabaseError, ProtocolError, RuntimeError, ValueError):
+        return _error(503, "receipt_unavailable", "The receipt is temporarily unavailable")
+    if result.status != 200:
+        return _json_response(result)
+    receipt = result.body["receipt"]
+    try:
+        document = render_receipt_pdf(receipt)
+    except (OSError, RuntimeError, ValueError):
+        return _error(503, "receipt_unavailable", "The receipt is temporarily unavailable")
+    response = make_response(document, 200)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = f'attachment; filename="{receipt["receipt_number"]}.pdf"'
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Vary"] = "Cookie, Origin"
+    return response
 
 
 @app.route("/api/<path:api_path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])

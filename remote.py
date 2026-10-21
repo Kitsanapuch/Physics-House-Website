@@ -18,6 +18,7 @@ import turso_serverless
 
 from backend import (
     COURSE_CATALOG,
+    COURSE_SEED_MIGRATION,
     BRAND_CODES_MIGRATION,
     TEACHER_ROSTER_MIGRATION,
     PhysicsPlusApp,
@@ -29,7 +30,10 @@ from backend import (
     fail,
     migrate_outbox_schema,
     migrate_academic_schema,
+    migrate_nullable_course_teachers,
     migrate_brand_codes,
+    migrate_receipts,
+    seed_initial_courses,
     seed_initial_teachers,
     now,
     uid,
@@ -262,8 +266,11 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             conn.executescript(SCHEMA + THROTTLE_SCHEMA)
             migrate_outbox_schema(conn)
             migrate_academic_schema(conn)
+            migrate_nullable_course_teachers(conn)
             migrate_brand_codes(conn)
             seed_initial_teachers(conn)
+            seed_initial_courses(conn)
+            migrate_receipts(conn)
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute(
                 "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
@@ -315,9 +322,17 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             throttle_table = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='login_throttle'"
             ).fetchone()
+            receipts_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='receipts'"
+            ).fetchone()
+            payments_missing_receipts = conn.execute(
+                "SELECT COUNT(*) FROM payments p LEFT JOIN receipts r ON r.payment_id=p.id WHERE r.id IS NULL"
+            ).fetchone()[0] if receipts_table else -1
             outbox_columns = {row[1] for row in conn.execute("PRAGMA table_info(notification_outbox)").fetchall()}
             user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
             course_columns = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
+            teacher_nullable = next((row[3] == 0 for row in conn.execute("PRAGMA table_info(courses)").fetchall()
+                                     if row[1] == "teacher_id"), False)
             class_columns = {row[1] for row in conn.execute("PRAGMA table_info(class_sessions)").fetchall()}
             clauses = " OR ".join("(level=? AND subject=?)" for _ in COURSE_CATALOG)
             catalog_args = tuple(value for level, subject in COURSE_CATALOG for value in (level, subject))
@@ -330,8 +345,8 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                 "+(SELECT COUNT(*) FROM class_sessions WHERE teacher_id IS NULL OR room_name IS NULL)"
             ).fetchone()[0]
             new_migrations = conn.execute(
-                "SELECT COUNT(*) FROM app_migrations WHERE key IN (?,?)",
-                (BRAND_CODES_MIGRATION, TEACHER_ROSTER_MIGRATION),
+                "SELECT COUNT(*) FROM app_migrations WHERE key IN (?,?,?)",
+                (BRAND_CODES_MIGRATION, TEACHER_ROSTER_MIGRATION, COURSE_SEED_MIGRATION),
             ).fetchone()[0]
             return {
                 "schema_initialized": bool(marker) and bool(throttle_table) and
@@ -339,7 +354,8 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                                       {"public_code"}.issubset(user_columns) and
                                       {"course_code", "subject_code"}.issubset(course_columns) and
                                       {"room_name", "teacher_id"}.issubset(class_columns) and
-                                      len(COURSE_CATALOG) == 8 and invalid_active == 0 and missing_codes == 0 and new_migrations == 2,
+                                      teacher_nullable and bool(receipts_table) and payments_missing_receipts == 0 and
+                                      len(COURSE_CATALOG) == 8 and invalid_active == 0 and missing_codes == 0 and new_migrations == 3,
                 "admin_count": admin_count,
                 "active_admin_count": active_admin_count,
                 "confirmed_default_rate_count": len(rate_rows),
@@ -347,6 +363,7 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                 "catalog_offering_count": len(COURSE_CATALOG),
                 "invalid_active_course_count": invalid_active,
                 "missing_public_code_count": missing_codes,
+                "payments_missing_receipts": payments_missing_receipts,
             }
 
     def handle(self, method: str, target: str, data: dict | None, headers: dict[str, str], client_ip: str) -> Response:

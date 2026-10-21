@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import app as site
 import remote
-from backend import ApiError
+from backend import ApiError, hash_password, uid
 
 
 class DeploymentPackageTests(unittest.TestCase):
@@ -182,6 +182,118 @@ class DeploymentPackageTests(unittest.TestCase):
                              json={"invoice_id": invoice.json["invoice_id"], "reference": "TEST-REF"})
         self.assertEqual(claim.status_code, 201, claim.json)
         self.assertEqual(claim.json["amount_satang"], 175000)
+
+    def test_payment_receipts_follow_course_purchase_and_are_private(self) -> None:
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
+        admin = site.app.test_client()
+        login = admin.post("/api/auth/login", base_url=self.base_url,
+                           headers={"Origin": self.base_url},
+                           json={"login": "physicsplus", "password": "SafeTestPassword123!"})
+        admin_headers = {"Origin": self.base_url, "X-CSRF-Token": login.json["csrf_token"]}
+        course = next(item for item in admin.get("/api/courses", base_url=self.base_url).json["courses"]
+                      if item["subject"] == "physics")
+        student = site.app.test_client()
+        registration = student.post("/api/auth/register", base_url=self.base_url,
+                                    headers={"Origin": self.base_url},
+                                    json={"name": "Test Student", "email": "receipt-student@example.com",
+                                          "password": "SafeTestPassword123!", "grade": "M4", "school": "Test School",
+                                          "guardian_name": "Test Guardian", "guardian_phone": "0812345678",
+                                          "guardian_relationship": "mother"})
+        self.assertEqual(registration.status_code, 201, registration.json)
+        student_headers = {"Origin": self.base_url, "X-CSRF-Token": registration.json["csrf_token"]}
+        enrollment = student.post("/api/student/enrollments", base_url=self.base_url,
+                                  headers=student_headers,
+                                  json={"course_id": course["id"], "grade": "M4", "school": "Test School",
+                                        "guardian_name": "Test Guardian", "guardian_phone": "0812345678",
+                                        "guardian_relationship": "mother"})
+        self.assertEqual(enrollment.status_code, 201, enrollment.json)
+        invoice = admin.post("/api/admin/invoices", base_url=self.base_url, headers=admin_headers,
+                             json={"enrollment_id": enrollment.json["enrollment_id"],
+                                   "amount_satang": 450_000, "due_date": "2030-01-15"})
+        self.assertEqual(invoice.status_code, 201, invoice.json)
+        invoice_id = invoice.json["invoice_id"]
+        first = admin.post("/api/admin/payments", base_url=self.base_url, headers=admin_headers,
+                           json={"invoice_id": invoice_id, "amount_satang": 150_000,
+                                 "method": "bank_transfer", "reference": "RECEIPT-REF-1"})
+        self.assertEqual(first.status_code, 201, first.json)
+        first_receipt_id = first.json["receipt_id"]
+        self.assertEqual(admin.get("/api/admin/invoices", base_url=self.base_url).json["receipts"][0]["id"], first_receipt_id)
+        dashboard = student.get("/api/student/dashboard", base_url=self.base_url).json
+        self.assertEqual(len(dashboard["receipts"]), 1)
+        self.assertEqual(dashboard["receipts"][0]["course_title"], course["title"])
+        self.assertEqual(dashboard["receipts"][0]["course_code"], course["course_code"])
+        self.assertEqual(dashboard["receipts"][0]["enrollment_id"], enrollment.json["enrollment_id"])
+        self.assertEqual(dashboard["receipts"][0]["amount_satang"], 150_000)
+        document = student.get(f"/api/receipts/{first_receipt_id}.pdf", base_url=self.base_url)
+        self.assertEqual(document.status_code, 200, document.json if document.is_json else "")
+        self.assertTrue(document.data.startswith(b"%PDF-"))
+        self.assertIn("application/pdf", document.content_type)
+        self.assertIn(first.json["receipt_number"], document.headers["Content-Disposition"])
+        self.assertIn("no-store", document.headers["Cache-Control"])
+        claim = student.post("/api/student/payment-claims", base_url=self.base_url,
+                             headers=student_headers,
+                             json={"invoice_id": invoice_id, "reference": "RECEIPT-REF-2"})
+        self.assertEqual(claim.status_code, 201, claim.json)
+        self.assertEqual(claim.json["amount_satang"], 300_000)
+        self.assertEqual(len(student.get("/api/student/dashboard", base_url=self.base_url).json["receipts"]), 1)
+        approval = admin.post(f"/api/admin/payment-claims/{claim.json['claim_id']}/approve",
+                              base_url=self.base_url, headers=admin_headers, json={})
+        self.assertEqual(approval.status_code, 200, approval.json)
+        receipts = student.get("/api/student/dashboard", base_url=self.base_url).json["receipts"]
+        self.assertEqual(len(receipts), 2)
+        self.assertEqual(sum(item["amount_satang"] for item in receipts), 450_000)
+        self.assertEqual({item["course_code"] for item in receipts}, {course["course_code"]})
+        self.assertEqual(admin.post(f"/api/admin/payment-claims/{claim.json['claim_id']}/approve",
+                                    base_url=self.base_url, headers=admin_headers, json={}).status_code, 404)
+        self.owner.initialize_remote()
+        self.assertEqual(len(student.get("/api/student/dashboard", base_url=self.base_url).json["receipts"]), 2)
+
+        other = site.app.test_client()
+        self.assertEqual(other.post("/api/auth/register", base_url=self.base_url,
+                                    headers={"Origin": self.base_url},
+                                    json={"name": "Other Student", "email": "other-student@example.com",
+                                          "password": "SafeTestPassword123!", "grade": "M4", "school": "Test School",
+                                          "guardian_name": "Test Guardian", "guardian_phone": "0812345678",
+                                          "guardian_relationship": "mother"}).status_code, 201)
+        self.assertEqual(other.get(f"/api/receipts/{first_receipt_id}", base_url=self.base_url).status_code, 404)
+        self.assertEqual(other.get(f"/api/receipts/{first_receipt_id}.pdf", base_url=self.base_url).status_code, 404)
+        teacher_id = uid()
+        with self.owner.connect() as conn:
+            conn.execute("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?)",
+                         (teacher_id, "receipt-teacher@example.com", "Test Teacher",
+                          hash_password("SafeTestPassword123!"), "teacher", 1))
+        teacher = site.app.test_client()
+        self.assertEqual(teacher.post("/api/auth/login", base_url=self.base_url,
+                                      headers={"Origin": self.base_url},
+                                      json={"login": "receipt-teacher@example.com",
+                                            "password": "SafeTestPassword123!"}).status_code, 200)
+        self.assertEqual(teacher.get(f"/api/receipts/{first_receipt_id}.pdf", base_url=self.base_url).status_code, 403)
+        self.assertEqual(site.app.test_client().get(f"/api/receipts/{first_receipt_id}.pdf",
+                                                     base_url=self.base_url).status_code, 401)
+
+    def test_receipt_migration_backfills_existing_confirmed_payment_once(self) -> None:
+        self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")
+        with self.owner.connect() as conn:
+            admin_id = conn.execute("SELECT id FROM users WHERE role='admin'").fetchone()[0]
+            course = conn.execute("SELECT id,course_code,title FROM courses WHERE subject='physics'").fetchone()
+            student_id, enrollment_id, invoice_id, payment_id = (uid() for _ in range(4))
+            conn.execute("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?)",
+                         (student_id, "old-student@example.com", "Old Student",
+                          hash_password("SafeTestPassword123!"), "student", 1))
+            conn.execute("INSERT INTO enrollments(id,course_id,student_id,created_at) VALUES(?,?,?,?)",
+                         (enrollment_id, course["id"], student_id, 1))
+            conn.execute("INSERT INTO invoices(id,invoice_number,enrollment_id,student_id,description,amount_satang,status,due_date,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                         (invoice_id, "PP-OLD-001", enrollment_id, student_id,
+                          "ค่าเรียนเดิม", 450_000, "partial", "2030-01-15", 1))
+            conn.execute("INSERT INTO payments(id,invoice_id,amount_satang,method,reference,recorded_by,recorded_at) VALUES(?,?,?,?,?,?,?)",
+                         (payment_id, invoice_id, 100_000, "cash", "LEGACY-REF", admin_id, 2))
+        self.owner.initialize_remote()
+        self.owner.initialize_remote()
+        with self.owner.connect() as conn:
+            rows = conn.execute("SELECT payment_id,course_code,course_title,amount_satang FROM receipts WHERE invoice_id=?",
+                                (invoice_id,)).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(tuple(rows[0]), (payment_id, course["course_code"], course["title"], 100_000))
 
 
 if __name__ == "__main__":

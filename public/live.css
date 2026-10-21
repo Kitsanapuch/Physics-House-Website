@@ -30,6 +30,10 @@ body .new-section>.panel{margin-bottom:20px}
 .course-card p{margin:0}
 .course-card .subject-tag{display:inline-block;font-size:10px;background:#fff0aa;color:#7f6b20;border-radius:5px;padding:4px 8px}
 .course-card .course-price{font-size:20px;margin:5px 0;color:#252419}
+.course-card p.awaiting-teacher,td.awaiting-teacher{color:#825f14;font-weight:700}
+.receipt-panel{margin-top:20px}
+.receipt-download{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:7px 11px;border-radius:8px;background:#1b1c18;color:#fff!important;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap}
+.receipt-download:hover,.receipt-download:focus-visible{background:#55481c;outline:2px solid #e6c523;outline-offset:2px}
 .course-card button{margin-top:auto;font-size:11px}
 .record-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;color:#655012;font-weight:700;white-space:nowrap}
 .class-roster-field{min-width:0;margin:0;padding:12px;border:1px solid #e3ddc4;border-radius:10px;background:#fffdf4}
