@@ -283,6 +283,35 @@ class GoogleWriterTests(unittest.TestCase):
 
 
 class RemoteAdditiveMigrationTests(unittest.TestCase):
+    def test_initializer_requeues_previously_clean_sheet_once(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / "synced.sqlite3"
+            PhysicsPlusApp(database, "https://school.example")
+            with sqlite3.connect(database) as conn:
+                conn.execute("UPDATE sheet_sync_state SET synced_revision=revision")
+
+            def local_transport(_url, *, auth_token=None, isolation_level=None):
+                return sqlite3.connect(database, isolation_level=isolation_level)
+
+            with patch.object(remote.turso_serverless, "connect", local_transport):
+                owner = RemotePhysicsPlusApp("turso://test.example", "synthetic-token",
+                                             "https://school.example")
+                owner.initialize_remote()
+                with owner.connect() as conn:
+                    first = dict(conn.execute(
+                        "SELECT dataset,revision FROM sheet_sync_state"
+                    ).fetchall())
+                    self.assertEqual(conn.execute(
+                        "SELECT COUNT(*) FROM sheet_sync_state "
+                        "WHERE revision>synced_revision"
+                    ).fetchone()[0], len(SHEET_DATASETS))
+                owner.initialize_remote()
+                with owner.connect() as conn:
+                    second = dict(conn.execute(
+                        "SELECT dataset,revision FROM sheet_sync_state"
+                    ).fetchall())
+                self.assertEqual(first, second)
+
     def test_existing_database_gets_new_tables_before_first_write(self):
         with tempfile.TemporaryDirectory() as folder:
             database = Path(folder) / "old.sqlite3"

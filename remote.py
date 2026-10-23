@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS login_throttle (
 );
 """
 
+SHEET_INIT_REFRESH_MIGRATION = "sheet_sync_post_migration_refresh_2026_10_23"
+
 
 class LibsqlRow(tuple):
     """Give libsql's tuple results the index and column-name API of sqlite3.Row."""
@@ -319,6 +321,20 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                     RATE_GRID_MIGRATION,
                     "activate_owner_grid",
                     {"effective_from": RATE_GRID_EFFECTIVE_FROM, "tiers": len(RATE_GRID)},
+                )
+            # Earlier migrations can change exported rows without going through
+            # audit(). Refresh a previously clean mirror once after those
+            # migrations, while leaving an unsynced initial backfill alone.
+            if not conn.execute(
+                "SELECT 1 FROM app_migrations WHERE key=?", (SHEET_INIT_REFRESH_MIGRATION,)
+            ).fetchone():
+                if conn.execute(
+                    "SELECT 1 FROM sheet_sync_state WHERE synced_revision>0 LIMIT 1"
+                ).fetchone():
+                    self._queue_all_sheet_datasets(conn)
+                conn.execute(
+                    "INSERT INTO app_migrations(key,applied_at) VALUES(?,?)",
+                    (SHEET_INIT_REFRESH_MIGRATION, now()),
                 )
             conn.commit()
 
