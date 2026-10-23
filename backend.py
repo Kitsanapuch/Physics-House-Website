@@ -49,6 +49,7 @@ COURSE_CATALOG = {
 INTERNAL_STAFF_DOMAIN = "physics-plus.invalid"
 TEACHER_ROSTER_MIGRATION = "teacher_roster_2026_10_21"
 BRAND_CODES_MIGRATION = "physics_plus_codes_2026_10_21"
+STUDENT_CODE_MIGRATION = "student_codes_yy_nnn_2026_10_24"
 COURSE_SEED_MIGRATION = "physics_plus_initial_courses_2026_10_21"
 INITIAL_TEACHERS = ("ครูตุ้ม", "ครูโรจน์", "ครูโจ้")
 INITIAL_COURSE_CAPACITY = 13
@@ -473,6 +474,96 @@ def next_public_code(conn: sqlite3.Connection, prefix: str) -> str:
     return f"PP-{prefix}-{number:06d}"
 
 
+def student_code_year(epoch: int | None = None) -> str:
+    """The two-digit Gregorian registration year in the school's time zone."""
+    year = datetime.fromtimestamp(now() if epoch is None else epoch, BANGKOK).year
+    return f"{year % 100:02d}"
+
+
+def next_student_code(conn: sqlite3.Connection, year: str | None = None) -> str:
+    """Allocate YYNNN inside the caller's BEGIN IMMEDIATE transaction.
+
+    The independent counter for each year is reconciled with existing codes,
+    so a restored database or a legacy import cannot reuse a number.
+    """
+    year = student_code_year() if year is None else year
+    if not isinstance(year, str) or not re.fullmatch(r"[0-9]{2}", year):
+        raise ValueError("Student code year must have two ASCII digits")
+    highest = conn.execute(
+        "SELECT COALESCE(MAX(CAST(substr(public_code,3) AS INTEGER)),0) "
+        "FROM users WHERE public_code GLOB ?",
+        (f"{year}[0-9][0-9][0-9]",),
+    ).fetchone()[0]
+    counter = f"student:{year}"
+    conn.execute(
+        "INSERT OR IGNORE INTO code_counters(prefix,next_number) VALUES(?,?)",
+        (counter, max(1, highest + 1)),
+    )
+    number = conn.execute(
+        "SELECT next_number FROM code_counters WHERE prefix=?", (counter,)
+    ).fetchone()[0]
+    number = max(number, highest + 1)
+    if number > 999:
+        fail(409, "student_code_capacity_exhausted", "All student codes for this year have been used")
+    conn.execute(
+        "UPDATE code_counters SET next_number=? WHERE prefix=?", (number + 1, counter)
+    )
+    return f"{year}{number:03d}"
+
+
+def migrate_student_codes(conn: sqlite3.Connection) -> bool:
+    """Replace legacy visible codes once, preserving all internal foreign keys.
+
+    Existing valid YYNNN codes remain stable. The audit log records old and
+    new values; the dedicated student Sheets mirrors are refreshed afterward.
+    """
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if conn.execute(
+            "SELECT 1 FROM app_migrations WHERE key=?", (STUDENT_CODE_MIGRATION,)
+        ).fetchone():
+            conn.commit()
+            return False
+        students = conn.execute(
+            "SELECT id,public_code,created_at FROM users WHERE role='student' "
+            "ORDER BY created_at,id"
+        ).fetchall()
+        changed_at = now()
+        changed = False
+        for student in students:
+            old_code = student["public_code"]
+            valid = (isinstance(old_code, str) and
+                     re.fullmatch(r"[0-9]{5}", old_code) is not None and
+                     old_code[2:] != "000")
+            if valid:
+                continue
+            new_code = next_student_code(conn, student_code_year(student["created_at"]))
+            conn.execute("UPDATE users SET public_code=? WHERE id=?", (new_code, student["id"]))
+            conn.execute(
+                "INSERT INTO audit_events(id,actor_id,entity,entity_id,action,details,created_at) "
+                "VALUES(?,NULL,'user',?,'reissue_student_code',?,?)",
+                (uid(), student["id"], json.dumps({"old_code": old_code, "new_code": new_code},
+                                                    ensure_ascii=False, separators=(",", ":")), changed_at),
+            )
+            changed = True
+        if changed:
+            conn.executemany(
+                "INSERT INTO sheet_sync_state(dataset,revision,updated_at,next_attempt_at) "
+                "VALUES(?,1,?,0) ON CONFLICT(dataset) DO UPDATE SET "
+                "revision=revision+1,updated_at=excluded.updated_at,next_attempt_at=0",
+                [(dataset, changed_at) for dataset in ("students", "class_rosters", "enrollments")],
+            )
+        conn.execute(
+            "INSERT INTO app_migrations(key,applied_at) VALUES(?,?)",
+            (STUDENT_CODE_MIGRATION, changed_at),
+        )
+        conn.commit()
+        return True
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 def migrate_academic_schema(conn: sqlite3.Connection) -> None:
     """Upgrade existing SQLite/Turso data without reassigning historical IDs or invoices."""
     conn.execute("BEGIN IMMEDIATE")
@@ -745,6 +836,7 @@ class PhysicsPlusApp:
             conn.executescript(SCHEMA)
             migrate_outbox_schema(conn)
             migrate_academic_schema(conn)
+            migrate_student_codes(conn)
             migrate_nullable_course_teachers(conn)
             migrate_brand_codes(conn)
             seed_initial_teachers(conn)
@@ -1099,9 +1191,10 @@ class PhysicsPlusApp:
         password = validate_password(data.get("password"))
         profile = student_profile_input(data)
         user_id = uid()
-        public_code = next_public_code(conn, "S")
-        conn.execute("INSERT INTO users(id,email,public_code,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)", (user_id, email, public_code, name, hash_password(password), "student", now()))
-        conn.execute("INSERT INTO student_profiles(user_id,grade,school,guardian_name,guardian_phone,guardian_relationship,updated_at) VALUES(?,?,?,?,?,?,?)", (user_id, *profile.values(), now()))
+        created_at = now()
+        public_code = next_student_code(conn, student_code_year(created_at))
+        conn.execute("INSERT INTO users(id,email,public_code,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)", (user_id, email, public_code, name, hash_password(password), "student", created_at))
+        conn.execute("INSERT INTO student_profiles(user_id,grade,school,guardian_name,guardian_phone,guardian_relationship,updated_at) VALUES(?,?,?,?,?,?,?)", (user_id, *profile.values(), created_at))
         cookie, csrf = self._new_session(conn, user_id)
         user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
         event_id = self.audit(conn, user_id, "user", user_id, "register")
@@ -1756,7 +1849,7 @@ class PhysicsPlusApp:
             fail(400, "invalid_page", "page must be between 1 and 9999")
         page = int(raw_page)
         sql = {
-            "students": "SELECT u.id,u.public_code student_code,u.name,u.email,u.status,p.grade,p.school,p.guardian_name,p.guardian_phone,p.guardian_relationship,u.created_at FROM users u LEFT JOIN student_profiles p ON p.user_id=u.id WHERE u.role='student' ORDER BY u.created_at,u.id",
+            "students": "SELECT u.public_code student_code,u.id,u.name,u.email,u.status,p.grade,p.school,p.guardian_name,p.guardian_phone,p.guardian_relationship,u.created_at FROM users u LEFT JOIN student_profiles p ON p.user_id=u.id WHERE u.role='student' ORDER BY u.created_at,u.id",
             "teachers": "SELECT id,public_code teacher_code,name,email,status,created_at FROM users WHERE role='teacher' ORDER BY created_at,id",
             "courses": "SELECT c.id,c.course_code,c.subject_code,c.title,c.subject,c.level,c.price_satang,c.capacity,c.active,u.name teacher_name,u.public_code teacher_code,c.created_at FROM courses c LEFT JOIN users u ON u.id=c.teacher_id ORDER BY c.created_at,c.id",
             "classes": "SELECT s.id,s.room_name,s.starts_at,s.ends_at,s.status,c.course_code,c.subject_code,c.title course_title,u.public_code teacher_code,u.name teacher_name,(SELECT COUNT(*) FROM session_students ss WHERE ss.session_id=s.id) roster_count,s.created_at FROM class_sessions s JOIN courses c ON c.id=s.course_id JOIN users u ON u.id=s.teacher_id ORDER BY s.starts_at,s.id",
@@ -1790,8 +1883,10 @@ class PhysicsPlusApp:
             fail(409, "account_exists", "An account with this email already exists")
         temporary_password = secrets.token_urlsafe(24)
         staff_id = uid()
-        public_code = next_public_code(conn, "S" if role == "student" else "T")
-        conn.execute("INSERT INTO users(id,email,public_code,name,password_hash,role,must_change_password,created_at) VALUES(?,?,?,?,?,?,1,?)", (staff_id, email, public_code, name, hash_password(temporary_password), role, now()))
+        created_at = now()
+        public_code = (next_student_code(conn, student_code_year(created_at)) if role == "student"
+                       else next_public_code(conn, "T"))
+        conn.execute("INSERT INTO users(id,email,public_code,name,password_hash,role,must_change_password,created_at) VALUES(?,?,?,?,?,?,1,?)", (staff_id, email, public_code, name, hash_password(temporary_password), role, created_at))
         event_id = self.audit(conn, user["id"], "user", staff_id, "create_user", {"role": role})
         self.enqueue_notice(conn, event_id, "account_created", staff_id)
         return Response(201, {"user": {"id": staff_id, "email": email, "name": name, "role": role, "student_code": public_code if role == "student" else None, "teacher_code": public_code if role == "teacher" else None}, "temporary_password": temporary_password, "must_change_password": True})

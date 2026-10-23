@@ -278,7 +278,11 @@ class GoogleWriterTests(unittest.TestCase):
                             for request in batch if "repeatCell" in request))
         data = next(request["updateCells"] for request in batch if "updateCells" in request)
         self.assertEqual(data["start"]["sheetId"], 2)
-        self.assertEqual(data["rows"][1]["values"][0]["userEnteredValue"]["stringValue"],
+        self.assertEqual(data["rows"][0]["values"][0]["userEnteredValue"]["stringValue"],
+                         "student_code")
+        self.assertEqual(data["rows"][0]["values"][-1]["userEnteredValue"]["stringValue"],
+                         "internal_id")
+        self.assertEqual(data["rows"][1]["values"][-1]["userEnteredValue"]["stringValue"],
                          '=IMPORTRANGE("x","y")')
 
 

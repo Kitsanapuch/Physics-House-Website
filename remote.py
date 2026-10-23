@@ -21,6 +21,7 @@ from backend import (
     COURSE_CATALOG,
     COURSE_SEED_MIGRATION,
     BRAND_CODES_MIGRATION,
+    STUDENT_CODE_MIGRATION,
     TEACHER_ROSTER_MIGRATION,
     PhysicsPlusApp,
     RATE_GRID,
@@ -33,6 +34,7 @@ from backend import (
     fail,
     migrate_outbox_schema,
     migrate_academic_schema,
+    migrate_student_codes,
     migrate_nullable_course_teachers,
     migrate_brand_codes,
     migrate_receipts,
@@ -224,9 +226,11 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
         self.auth_token = auth_token
         self._sheet_schema_ready = False
         self._sheet_schema_lock = threading.Lock()
-        # Historical migrations remain an explicit management step. The two
-        # new additive sync/settings tables are safe to create once on the
-        # first connection of each warm worker.
+        self._student_code_ready = False
+        self._student_code_lock = threading.Lock()
+        # Broad historical migrations remain an explicit management step.
+        # Additive sync/settings tables and the narrow student-code migration
+        # are safe to apply once on the first connection of each warm worker.
         super().__init__(Path("/__remote_turso__"), origin, None)
         for extra in extra_origins or set():
             parsed_origin = urlsplit(extra)
@@ -276,6 +280,27 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                         if users_exists:
                             seed_payment_account_and_sheet_queue(connection)
                         self._sheet_schema_ready = True
+            # This one-time, narrow migration changes only visible student
+            # codes. Run it before serving requests so deployed databases do
+            # not retain old codes until an operator invokes manage.py init.
+            # A fresh, partially initialized database is handled by init.
+            if not self._student_code_ready:
+                with self._student_code_lock:
+                    if not self._student_code_ready:
+                        required = {"users", "app_migrations", "code_counters",
+                                    "audit_events", "sheet_sync_state"}
+                        present = {row[0] for row in connection.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' "
+                            "AND name IN ('users','app_migrations','code_counters',"
+                            "'audit_events','sheet_sync_state')"
+                        ).fetchall()}
+                        if required.issubset(present) and any(
+                            row[1] == "public_code" for row in connection.execute(
+                                "PRAGMA table_info(users)"
+                            ).fetchall()
+                        ):
+                            migrate_student_codes(connection)
+                            self._student_code_ready = True
             return ClosingRemoteConnection(connection)
         except BaseException:
             connection.close()
@@ -287,6 +312,7 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             conn.executescript(SCHEMA + THROTTLE_SCHEMA)
             migrate_outbox_schema(conn)
             migrate_academic_schema(conn)
+            migrate_student_codes(conn)
             migrate_nullable_course_teachers(conn)
             migrate_brand_codes(conn)
             seed_initial_teachers(conn)
@@ -344,6 +370,15 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             marker = conn.execute(
                 "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
             ).fetchone()
+            student_code_marker = conn.execute(
+                "SELECT 1 FROM app_migrations WHERE key=?", (STUDENT_CODE_MIGRATION,)
+            ).fetchone()
+            invalid_student_codes = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE role='student' AND "
+                "(public_code IS NULL OR length(public_code)!=5 OR "
+                "public_code NOT GLOB '[0-9][0-9][0-9][0-9][0-9]' OR "
+                "substr(public_code,3,3)='000')"
+            ).fetchone()[0]
             admin_count, active_admin_count = conn.execute(
                 "SELECT COUNT(*), COALESCE(SUM(status='active'),0) FROM users WHERE role='admin'"
             ).fetchone()
@@ -388,7 +423,8 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                 (BRAND_CODES_MIGRATION, TEACHER_ROSTER_MIGRATION, COURSE_SEED_MIGRATION),
             ).fetchone()[0]
             return {
-                "schema_initialized": bool(marker) and bool(throttle_table) and
+                "schema_initialized": bool(marker) and bool(student_code_marker) and
+                                      invalid_student_codes == 0 and bool(throttle_table) and
                                       {"id", "first_attempt_at", "lease_token"}.issubset(outbox_columns) and
                                       {"dataset", "revision", "synced_revision", "lease_token"}.issubset(sheet_columns) and
                                       sheet_dataset_count >= len(SHEET_DATASETS) and payment_account_count == 1 and
@@ -404,6 +440,7 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                 "catalog_offering_count": len(COURSE_CATALOG),
                 "invalid_active_course_count": invalid_active,
                 "missing_public_code_count": missing_codes,
+                "invalid_student_code_count": invalid_student_codes,
                 "payments_missing_receipts": payments_missing_receipts,
                 "sheet_dataset_count": sheet_dataset_count,
                 "payment_account_count": payment_account_count,
