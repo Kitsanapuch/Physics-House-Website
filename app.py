@@ -15,10 +15,11 @@ from flask import Flask, make_response, redirect, request, send_from_directory
 from turso_serverless import DatabaseError
 from turso_serverless.protocol import ProtocolError
 
-from backend import MAX_BODY, Response
+from backend import MAX_BODY, Response, SHEET_DATASETS
 from mailer import delivery_configured, send_update_email
 from remote import RemotePhysicsPlusApp
 from receipt_pdf import render_receipt_pdf
+from sheets_sync import dispatch as dispatch_sheet_sync, sheet_configured
 
 
 PUBLIC_DIR = Path(__file__).resolve().parent / "public"
@@ -104,6 +105,13 @@ def _dispatch_notifications(*, limit: int) -> dict[str, int] | None:
     )
 
 
+def _dispatch_sheets(*, limit: int) -> dict[str, int] | None:
+    """Mirror committed changes; a failed delivery remains queued in Turso."""
+    if not sheet_configured():
+        return None
+    return dispatch_sheet_sync(_backend(), limit=limit)
+
+
 @app.errorhandler(413)
 def body_too_large(_error_info):
     return _error(413, "body_too_large", "Request body exceeds the size limit")
@@ -120,6 +128,26 @@ def retry_notifications():
     except (DatabaseError, ProtocolError, RuntimeError, ValueError):
         return _error(503, "notification_retry_unavailable", "Retry is temporarily unavailable")
     return _json_response(Response(200, {"ok": True, "delivery": "configured" if result is not None else "disabled", "batch": result}))
+
+
+@app.get("/api/cron/sheets")
+def retry_sheets():
+    secret = os.getenv("CRON_SECRET", "")
+    supplied = request.headers.get("Authorization", "")
+    if len(secret) < 32 or not hmac.compare_digest(supplied, "Bearer " + secret):
+        return _error(401, "unauthorized", "Unauthorized")
+    try:
+        owner = _backend()
+        with owner.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            # Daily reconciliation also rolls the current-month wage summary.
+            owner._queue_all_sheet_datasets(conn)
+            conn.commit()
+        batch = _dispatch_sheets(limit=len(SHEET_DATASETS))
+    except Exception:
+        return _error(503, "sheet_retry_unavailable", "Retry is temporarily unavailable")
+    return _json_response(Response(200, {"ok": True, "configured": batch is not None,
+                                     "batch": batch}))
 
 
 @app.get("/api/receipts/<receipt_id>.pdf")
@@ -177,10 +205,25 @@ def api(api_path: str):
     }:
         # The response is based on the already committed business update.
         # Provider or outbox failure must not turn a successful update into 500.
+        sheet_batch = {"processed": 0, "synced": 0, "retrying": 0}
         try:
-            _dispatch_notifications(limit=2)
+            sheet_batch = _dispatch_sheets(limit=len(SHEET_DATASETS)) or sheet_batch
         except Exception:
             pass
+        if target == "/api/admin/sheet-sync/retry":
+            # The admin retry button reports the attempted delivery, rather
+            # than merely saying that another retry was queued.
+            try:
+                with _backend().connect() as conn:
+                    result.body.update(_backend()._sheet_sync_status(conn))
+            except Exception:
+                pass
+            result.body.update(sheet_batch)
+        if target != "/api/admin/sheet-sync/retry":
+            try:
+                _dispatch_notifications(limit=2)
+            except Exception:
+                pass
     return _json_response(result)
 
 

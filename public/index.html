@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#10110f">
   <title>Physics Plus — เข้าสู่พื้นที่การเรียนรู้</title>
   <link rel="icon" href="physics-plus-logo-yellow-black.png">
-  <link rel="stylesheet" href="portal.css?v=9">
+  <link rel="stylesheet" href="portal.css?v=17">
 </head>
 <body>
   <div class="ambient" aria-hidden="true"><span>E = mc²</span><span>F = ma</span><span>∫ x dx</span></div>
@@ -26,7 +26,9 @@
       </div>
       <button class="motion-control" id="motion-control" type="button" aria-pressed="false" aria-label="หยุดภาพเคลื่อนไหว"><span class="motion-icon" aria-hidden="true">Ⅱ</span><span class="motion-label">หยุดภาพเคลื่อนไหว</span></button>
     </section>
+    <div class="auth-stage">
     <section class="auth-card" aria-labelledby="auth-title">
+      <span class="auth-wave" aria-hidden="true"></span>
       <div class="card-top"><span class="tiny-mark" aria-hidden="true">P+</span><span class="card-status"><i></i> พื้นที่สำหรับนักเรียนและทีมสอน</span></div>
       <div class="auth-heading"><p class="eyebrow" id="auth-eyebrow">WELCOME BACK</p><h2 id="auth-title">เข้าสู่ระบบ</h2><p id="auth-subtitle">กรอกบัญชีของคุณเพื่อไปยังหน้าที่ตรงกับสิทธิ์โดยอัตโนมัติ</p></div>
       <div class="auth-tabs" role="tablist" aria-label="เข้าสู่ระบบหรือสมัครสมาชิก"><button id="login-tab" role="tab" aria-selected="true" aria-controls="auth-panel" class="selected">เข้าสู่ระบบ</button><button id="register-tab" role="tab" aria-selected="false" aria-controls="auth-panel" tabindex="-1">สมัครสมาชิกนักเรียน</button></div>
@@ -49,19 +51,22 @@
       </div>
       <div class="card-footer"><span class="footer-line"></span><span>PHYSICS PLUS</span><span class="footer-line"></span></div>
     </section>
+    </div>
   </main>
   <dialog id="info"><button class="close" aria-label="ปิด">×</button><p class="eyebrow">PHYSICS PLUS</p><h2 id="info-title">พื้นที่เรียนรู้สำหรับเด็กมัธยม</h2><p id="info-text"></p><button class="dialog-primary">เข้าใจแล้ว</button></dialog>
 <script>
 const d=document, tabs=[d.getElementById('login-tab'),d.getElementById('register-tab')];
-let liveAuth=false;
+let liveAuth=false,authBusy=false;
 const subjectContent={physics:{number:'01 / 05',title:'ฟิสิกส์',description:'เข้าใจแรง การเคลื่อนที่ และพลังงานผ่านโจทย์ที่เห็นภาพ',formula:'F = ma'},chemistry:{number:'02 / 05',title:'เคมี',description:'เชื่อมสูตรกับภาพของสารและปฏิกิริยา เพื่อแก้โจทย์อย่างมั่นใจ',formula:'H₂O'},biology:{number:'03 / 05',title:'ชีวะ',description:'มองเห็นความสัมพันธ์ของเซลล์ ระบบร่างกาย และสิ่งมีชีวิต',formula:'DNA'},math:{number:'04 / 05',title:'คณิตศาสตร์',description:'เข้าใจวิธีคิดทีละขั้น ก่อนลงมือฝึกโจทย์ด้วยตัวเอง',formula:'∫ x dx'},general:{number:'05 / 05',title:'ภาษาอังกฤษ',description:'ฝึกอ่าน เขียน และสื่อสารอย่างมั่นใจ พร้อมใช้สอบในระดับมัธยม',formula:'A → Z'}};
-function setSubject(key){const content=subjectContent[key];if(!content)return;for(const button of d.querySelectorAll('[data-subject]')){const active=button.dataset.subject===key;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))}d.getElementById('subject-number').textContent=content.number;d.getElementById('subject-title').textContent=content.title;d.getElementById('subject-description').textContent=content.description;d.getElementById('subject-formula').textContent=content.formula}
+function setSubject(key){const content=subjectContent[key];if(!content)return;for(const button of d.querySelectorAll('[data-subject]')){const active=button.dataset.subject===key;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))}d.getElementById('subject-number').textContent=content.number;d.getElementById('subject-title').textContent=content.title;d.getElementById('subject-description').textContent=content.description;d.getElementById('subject-formula').textContent=content.formula;const showcase=d.querySelector('.subject-display');showcase.classList.remove('subject-switch');if(!d.documentElement.classList.contains('motion-paused')&&!matchMedia('(prefers-reduced-motion: reduce)').matches){void showcase.offsetWidth;showcase.classList.add('subject-switch')}}
 d.querySelectorAll('[data-subject]').forEach(button=>button.addEventListener('click',()=>setSubject(button.dataset.subject)));
 const motionButton=d.getElementById('motion-control');let motionPaused=false;
-function setMotionPaused(paused){motionPaused=paused;d.documentElement.classList.toggle('motion-paused',paused);motionButton.setAttribute('aria-pressed',String(paused));motionButton.setAttribute('aria-label',paused?'เริ่มภาพเคลื่อนไหว':'หยุดภาพเคลื่อนไหว');motionButton.querySelector('.motion-icon').textContent=paused?'▶':'Ⅱ';motionButton.querySelector('.motion-label').textContent=paused?'เริ่มภาพเคลื่อนไหว':'หยุดภาพเคลื่อนไหว'}
+function setMotionPaused(paused){motionPaused=paused;d.documentElement.classList.toggle('motion-paused',paused);if(paused)d.querySelector('.auth-card').classList.remove('auth-switch','auth-pulse');motionButton.setAttribute('aria-pressed',String(paused));motionButton.setAttribute('aria-label',paused?'เริ่มภาพเคลื่อนไหว':'หยุดภาพเคลื่อนไหว');motionButton.querySelector('.motion-icon').textContent=paused?'▶':'Ⅱ';motionButton.querySelector('.motion-label').textContent=paused?'เริ่มภาพเคลื่อนไหว':'หยุดภาพเคลื่อนไหว'}
 motionButton.addEventListener('click',()=>setMotionPaused(!motionPaused));
 function registerMode(){return tabs[1].getAttribute('aria-selected')==='true'}
+function playAuthWave(mode,x,y){const card=d.querySelector('.auth-card');card.classList.remove('auth-switch','auth-pulse');if(motionPaused||matchMedia('(prefers-reduced-motion: reduce)').matches)return;card.style.setProperty('--wave-x',x);card.style.setProperty('--wave-y',y);void card.offsetWidth;card.classList.add(mode)}
 function selectTab(register){
+  const changed=registerMode()!==register;
   tabs.forEach((t,i)=>{const on=i===Number(register);t.classList.toggle('selected',on);t.setAttribute('aria-selected',String(on));t.tabIndex=on?0:-1});
   d.getElementById('auth-panel').setAttribute('aria-labelledby',register?'register-tab':'login-tab');
   d.getElementById('auth-title').textContent=register?'สมัครสมาชิกนักเรียน':'เข้าสู่ระบบ';
@@ -76,10 +81,11 @@ function selectTab(register){
   d.getElementById('password-hint').textContent=register?'อย่างน้อย 12 ตัวอักษร':'รหัสผ่านบัญชีของคุณ';
   d.getElementById('password').autocomplete=register?'new-password':'current-password';
   setPasswordVisibility(false);authModeLabel();
+  if(changed)playAuthWave('auth-switch',register?'72%':'28%','49%');
 }
 function setPasswordVisibility(shown){const input=d.getElementById('password'),button=d.getElementById('password-toggle');input.type=shown?'text':'password';button.setAttribute('aria-label',shown?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน');button.setAttribute('aria-pressed',String(shown))}
 d.getElementById('password-toggle').addEventListener('click',()=>setPasswordVisibility(d.getElementById('password').type==='password'));
-tabs.forEach((b,i)=>{b.onclick=()=>selectTab(Boolean(i));b.onkeydown=e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const next=1-i;selectTab(Boolean(next));tabs[next].focus()}}});
+tabs.forEach((b,i)=>{b.onclick=()=>{if(!authBusy)selectTab(Boolean(i))};b.onkeydown=e=>{if(authBusy)return;if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const next=1-i;selectTab(Boolean(next));tabs[next].focus()}}});
 const modal=d.getElementById('info');function info(title,message){d.getElementById('info-title').textContent=title;d.getElementById('info-text').textContent=message;modal.showModal()}
 d.getElementById('about-button').onclick=()=>info('พื้นที่เรียนรู้สำหรับเด็กมัธยม','Physics Plus สอนวิชาทั่วไป โดยเน้นนักเรียนระดับมัธยม นักเรียนสมัครบัญชีและสมัครเรียนได้ในระบบ ส่วนครูและผู้ดูแลใช้บัญชีที่สถาบันจัดให้');modal.querySelector('.close').onclick=()=>modal.close();modal.querySelector('.dialog-primary').onclick=()=>modal.close();
 const authButton=d.getElementById('enter-demo'),feedback=d.getElementById('auth-feedback');
@@ -91,14 +97,14 @@ async function activateLiveLogin(){try{
   d.querySelector('.prototype-note').textContent='นักเรียนสมัครได้เอง · ครูและผู้ดูแลใช้บัญชีที่สถาบันจัดให้';authButton.disabled=false;authButton.addEventListener('click',submitAuth);
   d.querySelectorAll('#email,#password,#full-name,#profile-fields input,#profile-fields select').forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth(e)}));
 }catch{d.querySelector('.prototype-note').textContent='ติดต่อระบบไม่ได้ กรุณาลองใหม่ภายหลัง';d.getElementById('entry-label').textContent='ระบบยังไม่พร้อม';authButton.disabled=true}}
-async function submitAuth(e){if(!liveAuth)return;e.preventDefault();const register=registerMode();const login=d.getElementById('email').value.trim();const password=d.getElementById('password').value;const name=d.getElementById('full-name').value.trim();
+async function submitAuth(e){if(!liveAuth||authBusy)return;e.preventDefault();const register=registerMode();const login=d.getElementById('email').value.trim();const password=d.getElementById('password').value;const name=d.getElementById('full-name').value.trim();
   const profile={grade:d.getElementById('student-grade').value,school:d.getElementById('student-school').value.trim(),guardian_name:d.getElementById('guardian-name').value.trim(),guardian_phone:d.getElementById('guardian-phone').value.trim(),guardian_relationship:d.getElementById('guardian-relationship').value};
   if(!login||!password||(register&&(!name||Object.values(profile).some(v=>!v)))){feedback.textContent='กรุณากรอกข้อมูลให้ครบ';return}
   if(register&&!d.getElementById('email').checkValidity()){feedback.textContent='กรุณากรอกอีเมลที่ถูกต้อง';return}
   if(register&&password.length<12){feedback.textContent='รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร';return}
-  authButton.disabled=true;feedback.textContent=register?'กำลังสร้างบัญชี…':'กำลังเข้าสู่ระบบ…';
-  try{const r=await fetch(register?'/api/auth/register':'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(register?{name,email:login,password,...profile}:{login,password})});const body=await r.json();if(!r.ok||!body.authenticated){feedback.textContent=body.error?.message||'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจข้อมูลแล้วลองใหม่';return}location.assign('dashboard.html')}
-  catch{feedback.textContent='ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองอีกครั้ง'}finally{authButton.disabled=false}
+  authBusy=true;authButton.disabled=true;const card=d.querySelector('.auth-card');card.classList.remove('is-confirmed');card.classList.add('is-submitting');d.getElementById('entry-label').textContent=register?'กำลังสร้างบัญชี…':'กำลังเข้าสู่ระบบ…';feedback.textContent=register?'กำลังสร้างบัญชี…':'กำลังเข้าสู่ระบบ…';playAuthWave('auth-pulse','50%','77%');let success=false;
+  try{const r=await fetch(register?'/api/auth/register':'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(register?{name,email:login,password,...profile}:{login,password})});const body=await r.json();if(!r.ok||!body.authenticated){feedback.textContent=body.error?.message||'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจข้อมูลแล้วลองใหม่';return}success=true;card.classList.remove('is-submitting');card.classList.add('is-confirmed');d.getElementById('entry-label').textContent='สำเร็จ';feedback.textContent=register?'สร้างบัญชีสำเร็จ':'เข้าสู่ระบบสำเร็จ';if(!motionPaused&&!matchMedia('(prefers-reduced-motion: reduce)').matches)await new Promise(resolve=>setTimeout(resolve,160));location.assign('dashboard.html')}
+  catch{feedback.textContent='ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองอีกครั้ง'}finally{if(!success){card.classList.remove('is-submitting','is-confirmed');authBusy=false;authButton.disabled=false;authModeLabel()}}
 }
 activateLiveLogin();
 </script>

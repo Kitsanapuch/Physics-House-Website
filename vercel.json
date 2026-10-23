@@ -16,7 +16,8 @@
     }
   ],
   "crons": [
-    { "path": "/api/cron/notifications", "schedule": "0 3 * * *" }
+    { "path": "/api/cron/notifications", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/sheets", "schedule": "5 17 * * *" }
   ],
   "headers": [
     {

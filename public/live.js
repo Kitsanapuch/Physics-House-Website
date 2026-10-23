@@ -15,7 +15,111 @@
     pending_confirmation: 'รอยืนยันอัตรา', active: 'กำลังเรียน'
   };
   const $ = (id) => document.getElementById(id);
-  const state = { me: null, csrf: '', data: null, courses: [], academic: null, classes: [] };
+  const state = { me: null, csrf: '', data: null, courses: [], academic: null, classes: [], paymentAccount: null, sheetSyncStatus: null, nav: [], viewId: '', viewTargetId: '', homeHeading: '', homeSubtitle: '' };
+  let activeTasks = 0;
+  let adminClaimIds = null;
+  let adminClaimPollBusy = false;
+  function setActiveNav(targetId) {
+    for (const button of document.querySelectorAll('#side-nav button[data-target], #mobile-nav button[data-target]')) {
+      const active = button.dataset.target === targetId;
+      button.classList.toggle('selected', active);
+      if (active) button.setAttribute('aria-current', 'location');
+      else button.removeAttribute('aria-current');
+    }
+  }
+  function animateNavSelection(targetId) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (const button of document.querySelectorAll('#side-nav button[data-target], #mobile-nav button[data-target]')) {
+      if (button.dataset.target !== targetId || typeof button.animate !== 'function') continue;
+      const mobile = button.parentElement?.id === 'mobile-nav';
+      button.animate(mobile
+        ? [{ transform: 'scale(.97)' }, { transform: 'scale(1.045)' }, { transform: 'scale(1)' }]
+        : [{ transform: 'translateX(0)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }],
+      { duration: 340, easing: 'cubic-bezier(.22,.8,.25,1)' });
+    }
+  }
+  function hashTarget() {
+    try { return decodeURIComponent(location.hash.slice(1)); }
+    catch { return ''; }
+  }
+  function showView(targetId, { historyMode = 'none', scroll = false, animate = false, focus = false } = {}) {
+    const content = $('live-content');
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (!content || !target || !content.contains(target)) return false;
+    let section = target;
+    while (section && section.parentElement !== content) section = section.parentElement;
+    if (!section?.classList.contains('new-section') || !state.nav.some(([id]) => id === section.id)) return false;
+    const changed = state.viewTargetId !== targetId;
+    state.viewId = section.id;
+    state.viewTargetId = targetId;
+    for (const view of content.querySelectorAll(':scope > .new-section')) view.hidden = view !== section;
+    setActiveNav(section.id);
+    const label = state.nav.find(([id]) => id === section.id)?.[1] || state.homeHeading;
+    $('heading').textContent = section.id === 'overview' ? state.homeHeading : label;
+    $('subtitle').textContent = section.id === 'overview' ? state.homeSubtitle : (section.querySelector('p.muted')?.textContent || state.homeSubtitle);
+    if (historyMode !== 'none' && location.hash !== `#${targetId}`) {
+      const url = `#${encodeURIComponent(targetId)}`;
+      if (historyMode === 'replace') history.replaceState(null, '', url);
+      else history.pushState(null, '', url);
+    }
+    if (scroll) {
+      if (target === section) window.scrollTo({ top: 0, behavior: 'auto' });
+      else (target.closest('.panel') || target).scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+    if (focus) {
+      const panel = target.closest('.panel') || section;
+      const heading = panel.querySelector('h2,h3') || section.querySelector('h2,h3') || section;
+      const temporaryTabIndex = !heading.hasAttribute('tabindex');
+      if (temporaryTabIndex) heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+      if (temporaryTabIndex) heading.addEventListener('blur', () => heading.removeAttribute('tabindex'), { once: true });
+    }
+    if (animate && changed && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && typeof section.animate === 'function') {
+      section.animate([{ opacity: .35, transform: 'translateY(7px)' }, { opacity: 1, transform: 'translateY(0)' }],
+        { duration: 220, easing: 'cubic-bezier(.2,.75,.25,1)' });
+    }
+    return true;
+  }
+  function restoreViewFromLocation() {
+    const target = hashTarget() || 'overview';
+    if (!showView(target, { scroll: true, animate: true, focus: true })) showView('overview', { historyMode: 'replace', scroll: true, focus: true });
+  }
+  function updateAdminPaymentAlert(claims, announce = false, pendingCount = claims.length) {
+    if (state.me?.role !== 'admin') return;
+    const current = new Set(claims.map((claim) => String(claim.id)));
+    const added = adminClaimIds ? claims.filter((claim) => !adminClaimIds.has(String(claim.id))) : [];
+    adminClaimIds = current;
+    const badge = $('payment-alert-badge');
+    const button = $('payment-alert-button');
+    if (badge && button) {
+      badge.textContent = pendingCount > 99 ? '99+' : String(pendingCount);
+      badge.hidden = pendingCount === 0;
+      button.setAttribute('aria-label', `รายการแจ้งชำระรอตรวจ ${pendingCount} รายการ`);
+      button.classList.toggle('has-alert', pendingCount > 0);
+    }
+    const count = $('admin-claim-count');
+    if (count) count.textContent = String(pendingCount);
+    if (announce && added.length) {
+      const toast = $('payment-alert-toast');
+      if (toast) {
+        toast.querySelector('.payment-alert-text').textContent = `มีรายการแจ้งชำระใหม่ ${added.length} รายการ รอผู้ดูแลตรวจสอบ`;
+        toast.hidden = false;
+      }
+    }
+  }
+  async function pollAdminPaymentClaims() {
+    if (state.me?.role !== 'admin' || document.visibilityState === 'hidden' || adminClaimPollBusy || activeTasks) return;
+    adminClaimPollBusy = true;
+    try {
+      const alerts = await api('/api/admin/payment-alerts');
+      const claims = alerts.pending_payment_claims || [];
+      updateAdminPaymentAlert(claims, true, Number(alerts.pending_count ?? claims.length));
+    } catch (error) {
+      if (error.status === 401) return;
+    } finally {
+      adminClaimPollBusy = false;
+    }
+  }
   let studentClassPollBusy = false;
   let lastStudentClassPoll = 0;
   const thaiMoney = (satang) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(Number(satang || 0) / 100);
@@ -72,11 +176,15 @@
     if (method !== 'GET') {
       headers['Content-Type'] = 'application/json';
       if (state.csrf) headers['X-CSRF-Token'] = state.csrf;
+      if (activeTasks) feedback('กำลังดำเนินการ…', false, true);
     }
     const response = await fetch(path, { method, headers, credentials: 'same-origin', cache: 'no-store', body: body === null ? undefined : JSON.stringify(body) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(payload.error?.message || `Server error (${response.status})`);
+      const message = payload.error?.code === 'claim_pending'
+        ? 'ใบนี้มีรายการแจ้งชำระรอตรวจ กรุณาตรวจรายการแจ้งชำระก่อนบันทึกรับเงินโดยตรง'
+        : payload.error?.message || `Server error (${response.status})`;
+      const error = new Error(message);
       error.code = payload.error?.code || 'request_failed';
       error.status = response.status;
       if (response.status === 401 && path !== '/api/me') location.replace('index.html');
@@ -179,15 +287,21 @@
     card.append(info, button);
     return card;
   }
-  function feedback(message, isError = false) {
+  function feedback(message, isError = false, isPending = false) {
     const box = $('live-feedback');
     if (!box) return;
     box.textContent = message;
     box.classList.toggle('is-error', isError);
+    box.classList.toggle('is-pending', isPending);
     box.hidden = !message;
   }
   async function task(control, work, success = '') {
-    if (control) control.disabled = true;
+    activeTasks += 1;
+    if (control) {
+      control.disabled = true;
+      control.classList.add('is-working');
+      control.setAttribute('aria-busy', 'true');
+    }
     feedback('');
     try {
       await work();
@@ -195,19 +309,38 @@
     } catch (error) {
       feedback(error.message || 'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', true);
     } finally {
-      if (control) control.disabled = false;
+      activeTasks -= 1;
+      if (control) {
+        control.disabled = false;
+        control.classList.remove('is-working');
+        control.removeAttribute('aria-busy');
+      }
     }
   }
 
   function shell(user) {
     const role = user.role;
+    document.body.classList.remove('loading-screen');
     document.body.innerHTML = `
       <aside class="sidebar" aria-label="เมนูหลัก"><div class="sidebrand"><img src="physics-plus-logo-yellow-black.png" alt=""><div><strong>Physics<br>Plus<span style="color:#ffda39">.</span></strong><small>LEARNING WORKSPACE</small></div></div><div class="nav-label">พื้นที่ของคุณ</div><nav class="side-nav" id="side-nav"></nav><div class="side-profile"><span class="profile-avatar" id="profile-avatar"></span><div><strong id="profile-name"></strong><small id="profile-role"></small></div></div></aside>
       <header class="live-header"><div class="brand"><img class="mark" src="physics-plus-logo-yellow-black.png" alt="โลโก้ Physics Plus"><div>Physics Plus<div class="muted" id="header-role"></div></div></div><div class="header-actions"><button type="button" id="password-button">เปลี่ยนรหัสผ่าน</button><button type="button" id="logout-button">ออกจากระบบ</button></div></header>
       <nav class="mobile-nav" id="mobile-nav" aria-label="ส่วนต่าง ๆ ของระบบ"></nav>
-      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="student-live-cancellation" class="class-live-cancellation" role="alert" hidden></div><div id="live-content"></div></main>
+      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading" aria-live="polite"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="student-live-cancellation" class="class-live-cancellation" role="alert" hidden></div><div id="live-content"></div></main>
       <dialog id="live-dialog" class="live-dialog"></dialog>`;
     $('profile-name').textContent = user.name;
+    if (role === 'admin') {
+      const alertButton = element('button', 'payment-alert-button');
+      alertButton.type = 'button'; alertButton.id = 'payment-alert-button';
+      alertButton.dataset.action = 'open-payment-alerts';
+      alertButton.innerHTML = '<span aria-hidden="true">🔔</span><span id="payment-alert-badge" class="payment-alert-badge" hidden>0</span>';
+      alertButton.setAttribute('aria-label', 'รายการแจ้งชำระรอตรวจ 0 รายการ');
+      document.querySelector('.header-actions').prepend(alertButton);
+      const toast = element('aside', 'payment-alert-toast');
+      toast.id = 'payment-alert-toast'; toast.hidden = true;
+      toast.setAttribute('role', 'alert');
+      toast.innerHTML = '<span class="payment-alert-text"></span><button type="button" data-action="open-payment-alerts">เปิดดูรายการ</button><button type="button" data-action="dismiss-payment-alert" aria-label="ปิดแจ้งเตือน">×</button>';
+      document.body.append(toast);
+    }
     $('profile-avatar').textContent = user.name.trim().slice(0, 1) || 'PP';
     $('profile-role').textContent = roleNames[role];
     $('header-role').textContent = roleNames[role];
@@ -217,19 +350,29 @@
       teacher: ['จัดการคาบสอนในที่เดียว', 'ดูตารางสอน ลงเวลาจริง และติดตามค่าจ้างที่อนุมัติ'],
       admin: ['ดูแล Physics Plus', 'จัดการคอร์ส ค่าเรียน เวลาสอน และการจ่ายค่าจ้าง']
     };
-    $('heading').textContent = headlines[role][0];
-    $('subtitle').textContent = headlines[role][1];
+    state.homeHeading = headlines[role][0];
+    state.homeSubtitle = headlines[role][1];
+    $('heading').textContent = state.homeHeading;
+    $('subtitle').textContent = state.homeSubtitle;
     const nav = role === 'student'
       ? [['overview', 'ภาพรวม'], ['student-classes', 'ห้องเรียนของฉัน'], ['catalog', 'สมัครเรียน'], ['student-payments', 'การชำระเงิน']]
       : role === 'teacher'
         ? [['overview', 'คาบสอน'], ['teacher-time', 'ลงเวลาสอน'], ['teacher-payroll', 'ค่าจ้างของฉัน']]
-        : [['overview', 'ภาพรวม'], ['admin-staff', 'ครูผู้สอน'], ['admin-accounts', 'บัญชีนักเรียน'], ['admin-classroom', 'ห้องเรียน'], ['admin-enrollments', 'การสมัครเรียน'], ['admin-finance', 'ค่าเรียน'], ['admin-teaching', 'เวลาสอน'], ['admin-rates', 'อัตราค่าจ้าง'], ['admin-management', 'รายวิชา'], ['admin-payroll', 'จ่ายค่าจ้าง'], ['admin-reports', 'ส่งออกข้อมูล']];
+        : [['overview', 'ภาพรวม'], ['admin-staff', 'ครูผู้สอน'], ['admin-accounts', 'บัญชีนักเรียน'], ['admin-classroom', 'ห้องเรียน'], ['admin-enrollments', 'การสมัครเรียน'], ['admin-finance', 'ค่าเรียน'], ['admin-teaching', 'เวลาสอน'], ['admin-rates', 'อัตราค่าจ้าง'], ['admin-management', 'รายวิชา'], ['admin-payroll', 'จ่ายค่าจ้าง'], ['admin-reports', 'Google Sheet']];
+    state.nav = nav;
     for (const [target, label] of nav) {
       for (const container of [$('side-nav'), $('mobile-nav')]) {
         const button = actionButton(label, 'jump');
         button.dataset.target = target;
         container.append(button);
       }
+    }
+    setActiveNav(nav[0][0]);
+    window.addEventListener('popstate', restoreViewFromLocation);
+    window.addEventListener('hashchange', restoreViewFromLocation);
+    if (role === 'admin') {
+      window.setInterval(pollAdminPaymentClaims, 30000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollAdminPaymentClaims(); });
     }
     $('logout-button').addEventListener('click', (event) => task(event.currentTarget, async () => {
       await api('/api/auth/logout', 'POST', {});
@@ -246,7 +389,7 @@
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>ยอดค้างชำระ</span><strong id="student-outstanding">—</strong><small>จากใบแจ้งยอดของคุณ</small></div><div class="stat"><span>คอร์สที่ลงเรียน</span><strong id="student-course-count">—</strong><small>ข้อมูลจากบัญชีของคุณ</small></div><div class="stat"><span>รายการแจ้งชำระรอตรวจ</span><strong id="student-claim-count">—</strong><small>ผู้ดูแลจะตรวจหลักฐานอ้างอิง</small></div></div><section class="panel"><div class="panel-head"><div><h2>คอร์สและใบแจ้งยอดของฉัน</h2><p class="muted">ยอดคงเหลือคำนวณจากรายการชำระที่ผู้ดูแลบันทึกแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>คอร์ส</th><th>เลขที่ใบแจ้งยอด</th><th>ยอดทั้งหมด</th><th>คงเหลือ</th><th>ครบกำหนด</th><th>สถานะ</th></tr></thead><tbody id="student-enrollments"></tbody></table></div></section></section>
       <section id="student-classes" class="panel new-section"><div class="panel-head"><div><h2>ห้องเรียนและตารางเรียนของฉัน</h2><p class="muted">ผู้ดูแลเป็นผู้จัดห้อง ครู เวลา และรายชื่อทุกคน หลังจัดเข้าห้องแล้วจะแสดงที่นี่</p></div></div><div id="student-class-alerts" class="class-alert-list" aria-live="polite"></div><div class="tablewrap"><table><thead><tr><th>รหัสวิชา / คอร์ส</th><th>ห้อง</th><th>วันและเวลา</th><th>ผู้สอน</th><th>สถานะ</th></tr></thead><tbody id="student-classes-rows"></tbody></table></div></section>
       <section id="catalog" class="panel new-section"><div class="panel-head"><div><h2>สมัครเรียน</h2><p class="muted">เลือกคอร์สแล้วกรอกระดับชั้น โรงเรียน และข้อมูลผู้ปกครอง ผู้ดูแลจะแจ้งยอดค่าเรียนในระบบภายหลัง</p></div></div><div class="course-grid" id="course-grid"></div></section>
-      <section id="student-payments" class="new-section"><div class="grid"><div class="panel"><h2>แจ้งชำระค่าเรียน</h2><p class="muted">เลือกใบแจ้งยอดที่ผู้ดูแลกำหนด แล้วกรอกเลขอ้างอิงการโอนเพื่อตรวจสอบ</p><form data-action="student-claim" class="live-form"><label>ใบแจ้งยอด<select name="invoice_id" id="claim-invoice" required></select></label><p class="muted" id="claim-display-amount">ยอดที่ต้องชำระ: เลือกใบแจ้งยอดก่อน</p><label>เลขอ้างอิงการโอน<input name="reference" required maxlength="120" autocomplete="off"></label><button class="primary" type="submit">ส่งรายการแจ้งชำระ</button></form><p class="foot">ยอดชำระกำหนดโดยผู้ดูแล นักเรียนแก้ไขเองไม่ได้ · รายละเอียดบัญชีรับโอนจะแจ้งภายหลัง</p></div><div class="panel"><h2>รายการแจ้งชำระที่ส่งแล้ว</h2><div class="tablewrap"><table><thead><tr><th>วันที่</th><th>จำนวน</th><th>เลขอ้างอิง</th><th>สถานะ</th></tr></thead><tbody id="student-claims"></tbody></table></div></div></div><section class="panel receipt-panel"><div class="panel-head"><div><h2>ใบสำคัญรับเงินของฉัน</h2><p class="muted">ออกตามคอร์สที่สมัครและยอดรับจริง ดาวน์โหลด PDF ได้หลังผู้ดูแลตรวจสอบและยืนยันรับเงินแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>เลขที่ใบสำคัญ</th><th>คอร์ส / ใบแจ้งยอด</th><th>วันที่รับเงิน</th><th>จำนวนที่รับ</th><th>เอกสาร</th></tr></thead><tbody id="student-receipts"></tbody></table></div></section></section>`;
+      <section id="student-payments" class="new-section"><div class="grid"><div class="panel"><h2>แจ้งชำระค่าเรียน</h2><p class="muted">เลือกใบแจ้งยอดที่ผู้ดูแลกำหนด แล้วกรอกเลขอ้างอิงการโอนเพื่อตรวจสอบ</p><form data-action="student-claim" class="live-form"><label>ใบแจ้งยอด<select name="invoice_id" id="claim-invoice" required></select></label><p class="muted" id="claim-display-amount">ยอดที่ต้องชำระ: เลือกใบแจ้งยอดก่อน</p><label>เลขอ้างอิงการโอน<input name="reference" required maxlength="120" autocomplete="off"></label><button class="primary" type="submit">ส่งรายการแจ้งชำระ</button></form><p class="foot">ยอดชำระกำหนดโดยผู้ดูแล นักเรียนแก้ไขเองไม่ได้ · กรุณาโอนตามบัญชีด้านบน</p></div><div class="panel"><h2>รายการแจ้งชำระที่ส่งแล้ว</h2><div class="tablewrap"><table><thead><tr><th>วันที่</th><th>จำนวน</th><th>เลขอ้างอิง</th><th>สถานะ</th></tr></thead><tbody id="student-claims"></tbody></table></div></div></div><section class="panel receipt-panel"><div class="panel-head"><div><h2>ใบสำคัญรับเงินของฉัน</h2><p class="muted">ออกตามคอร์สที่สมัครและยอดรับจริง ดาวน์โหลด PDF ได้หลังผู้ดูแลตรวจสอบและยืนยันรับเงินแล้ว</p></div></div><div class="tablewrap"><table><thead><tr><th>เลขที่ใบสำคัญ</th><th>คอร์ส / ใบแจ้งยอด</th><th>วันที่รับเงิน</th><th>จำนวนที่รับ</th><th>เอกสาร</th></tr></thead><tbody id="student-receipts"></tbody></table></div></section></section>`;
     if (role === 'teacher') return `
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>คาบที่ได้รับมอบหมาย</span><strong id="teacher-session-count">—</strong><small>จากตารางสอนจริง</small></div><div class="stat"><span>รายการลงเวลารอตรวจ</span><strong id="teacher-pending-count">—</strong><small>ผู้ดูแลต้องอนุมัติ</small></div><div class="stat"><span>ค่าจ้างที่จ่ายแล้ว</span><strong id="teacher-paid-total">—</strong><small>จากงวดค่าจ้างของคุณ</small></div></div><section class="panel"><div class="panel-head"><div><h2>ตารางสอนและสถานะเวลาสอน</h2><p class="muted">เลือกเช็กชื่อในคาบที่มีนักเรียน และลงเวลาหลังสอนจริง หากต้องยกคลาสล่วงหน้า ให้แจ้งเหตุผลเพื่อแจ้งนักเรียนในห้อง</p></div></div><div class="tablewrap"><table><thead><tr><th>คาบ / คอร์ส</th><th>ห้อง / เวลา</th><th>นักเรียน</th><th>สถานะ</th><th>เวลาสอน</th><th>ดำเนินการ</th></tr></thead><tbody id="teacher-sessions"></tbody></table></div></section></section>
       <section id="teacher-time" class="panel new-section"><h2>ลงเวลาสอนจริง</h2><p class="muted">เวลาอ้างอิงประเทศไทย (UTC+7) บันทึกได้หลังสอนเสร็จ และต้องใกล้คาบที่กำหนด</p><form data-action="teacher-time" class="live-form live-form-grid"><label>คาบเรียน<select name="session_id" id="time-session" required></select></label><label>เริ่มสอนจริง<input name="actual_start" id="actual-start" type="datetime-local" required></label><label>เลิกสอนจริง<input name="actual_end" id="actual-end" type="datetime-local" required></label><label>พัก (นาที)<input name="break_minutes" type="number" min="0" max="480" value="0" required></label><button type="submit" class="primary">ส่งเวลาสอนให้ตรวจ</button></form><p class="foot">ระบบจะตรวจเวลาซ้อนและคำนวณค่าจ้างหลังผู้ดูแลเช็กชื่อครบและยืนยันอัตราแล้ว</p></section>
@@ -255,7 +398,7 @@
       <section id="overview" class="new-section"><div class="stats"><div class="stat"><span>คงค้างในใบแจ้งยอดล่าสุด</span><strong id="admin-outstanding">—</strong><small>จาก 100 รายการล่าสุดที่แสดง</small></div><div class="stat"><span>รายการแจ้งชำระรอตรวจ</span><strong id="admin-claim-count">—</strong><small>ตรวจเงินก่อนยืนยัน</small></div><div class="stat"><span>เวลาสอนรอตรวจ</span><strong id="admin-time-count">—</strong><small>ต้องเช็กชื่อครบและมีอัตราที่ยืนยัน</small></div></div></section>
       <section id="admin-staff" class="panel new-section"><div class="panel-head staff-panel-head"><div><h2>ทะเบียนครูผู้สอน</h2><p class="muted">จัดการครูเหมือนทะเบียนพนักงาน ผู้ดูแลเลือกครูประจำคอร์สและตารางสอนได้แม้ครูยังไม่มีบัญชีเข้าใช้ระบบ</p></div><button type="button" class="primary" data-action="staff-add">+ เพิ่มครู</button></div><div class="staff-summary"><span id="staff-total">ครูทั้งหมด — คน</span><span id="staff-pending">รอเปิดบัญชี — คน</span></div><label class="admin-search-label" for="admin-staff-search">ค้นหาชื่อหรือรหัสครู<input id="admin-staff-search" type="search" autocomplete="off" placeholder="ค้นหารายชื่อครู"></label><div class="tablewrap"><table><thead><tr><th>รหัสครู</th><th>ชื่อครู</th><th>การเข้าใช้ระบบ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-staff-rows"></tbody></table></div><p class="foot">การเปิดบัญชีครูต้องใช้อีเมลจริงของครู ระบบจะแสดงรหัสผ่านชั่วคราวเพียงครั้งเดียว</p></section>
       <section id="admin-accounts" class="panel new-section"><div class="panel-head"><div><h2>จัดการบัญชีนักเรียน</h2><p class="muted">สร้างบัญชี รีเซ็ตรหัสผ่านชั่วคราว และเปิดหรือปิดสิทธิ์เข้าใช้ระบบ</p></div></div><form data-action="admin-user-create" class="live-form live-form-grid"><label>ชื่อ–นามสกุล<input name="name" required maxlength="120"></label><label>อีเมล<input name="email" type="email" required autocomplete="off"></label><input name="role" type="hidden" value="student"><button type="submit" class="primary">สร้างบัญชีนักเรียน</button></form><p class="foot">รหัสผ่านชั่วคราวจะแสดงเพียงครั้งเดียว ผู้รับต้องเปลี่ยนรหัสเมื่อเข้าสู่ระบบครั้งแรก</p><label class="admin-search-label" for="admin-user-search">ค้นหาชื่อ รหัส หรืออีเมล<input id="admin-user-search" type="search" autocomplete="off" placeholder="พิมพ์เพื่อค้นหาบัญชี"></label><div class="tablewrap"><table><thead><tr><th>รหัสประจำตัว</th><th>ชื่อ / บัญชี</th><th>ประเภท</th><th>สถานะ</th><th>รหัสชั่วคราว</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-user-rows"></tbody></table></div></section>
-      <section id="admin-finance" class="new-section"><section class="panel"><h2>แจ้งยอดค่าเรียนให้นักเรียน</h2><p class="muted">นักเรียนสมัครเรียนก่อน จากนั้นผู้ดูแลระบุยอดและวันครบกำหนดเอง ระบบจึงแสดงใบแจ้งยอดในบัญชีนักเรียน</p><form data-action="admin-invoice" class="live-form live-form-grid"><label>นักเรียน / คอร์สที่ยังไม่แจ้งยอด<select name="enrollment_id" id="invoice-enrollment" required></select></label><label>ค่าเรียนที่แจ้ง (บาท)<input name="amount" id="invoice-amount" inputmode="decimal" required placeholder="เลือกคอร์สเพื่อดึงราคา"></label><label>วันครบกำหนด<input name="due_date" type="date" required></label><label>รายละเอียด<input name="description" maxlength="250" placeholder="เช่น ค่าเรียนคอร์สคณิตศาสตร์"></label><button type="submit" class="primary">แจ้งยอดให้นักเรียน</button></form><p class="foot">เลขบัญชีรับโอนจะระบุภายหลัง จึงยังไม่แสดงเลขบัญชีในหน้านักเรียน</p></section><div class="grid"><section class="panel"><h2>รายการแจ้งยอด</h2><div class="tablewrap"><table><thead><tr><th>เลขที่ / นักเรียน</th><th>ยอด</th><th>คงเหลือ</th><th>ครบกำหนด</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-invoices"></tbody></table></div></section><section class="panel"><h2>รายการแจ้งชำระรอตรวจ</h2><div class="tablewrap"><table><thead><tr><th>นักเรียน / อ้างอิง</th><th>ยอด</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-claims"></tbody></table></div></section></div><section class="panel"><h2>บันทึกการรับเงินโดยผู้ดูแล</h2><p class="muted">สำหรับเงินที่ตรวจสอบแล้ว กรุณาใช้เลขอ้างอิงที่ตรวจยืนยันได้</p><form data-action="admin-payment" class="live-form live-form-grid"><label>ใบแจ้งยอด<select name="invoice_id" id="payment-invoice" required></select></label><label>จำนวนที่ได้รับ (บาท)<input name="amount" id="payment-amount" inputmode="decimal" required></label><label>วิธีรับเงิน<input name="method" required maxlength="30" placeholder="เช่น bank_transfer"></label><label>เลขอ้างอิง<input name="reference" required maxlength="120"></label><button type="submit" class="primary">บันทึกรับเงิน</button></form></section></section>
+      <section id="admin-finance" class="new-section"><section class="panel"><h2>แจ้งยอดค่าเรียนให้นักเรียน</h2><p class="muted">นักเรียนสมัครเรียนก่อน จากนั้นผู้ดูแลระบุยอดและวันครบกำหนดเอง ระบบจึงแสดงใบแจ้งยอดในบัญชีนักเรียน</p><form data-action="admin-invoice" class="live-form live-form-grid"><label>นักเรียน / คอร์สที่ยังไม่แจ้งยอด<select name="enrollment_id" id="invoice-enrollment" required></select></label><label>ค่าเรียนที่แจ้ง (บาท)<input name="amount" id="invoice-amount" inputmode="decimal" required placeholder="เลือกคอร์สเพื่อดึงราคา"></label><label>วันครบกำหนด<input name="due_date" type="date" required></label><label>รายละเอียด<input name="description" maxlength="250" placeholder="เช่น ค่าเรียนคอร์สคณิตศาสตร์"></label><button type="submit" class="primary">แจ้งยอดให้นักเรียน</button></form><p class="foot">บัญชีรับโอนด้านบนจะแสดงในหน้านักเรียนหลังเข้าสู่ระบบ</p></section><div class="grid"><section class="panel"><h2>รายการแจ้งยอด</h2><div class="tablewrap"><table><thead><tr><th>เลขที่ / นักเรียน</th><th>ยอด</th><th>คงเหลือ</th><th>ครบกำหนด</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-invoices"></tbody></table></div></section><section class="panel"><h2>รายการแจ้งชำระรอตรวจ</h2><div class="tablewrap"><table><thead><tr><th>นักเรียน / อ้างอิง</th><th>ยอด</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-claims"></tbody></table></div></section></div><section class="panel"><h2>บันทึกการรับเงินโดยผู้ดูแล</h2><p class="muted">สำหรับเงินที่ตรวจสอบแล้ว กรุณาใช้เลขอ้างอิงที่ตรวจยืนยันได้</p><form data-action="admin-payment" class="live-form live-form-grid"><label>ใบแจ้งยอด<select name="invoice_id" id="payment-invoice" required></select></label><label>จำนวนที่ได้รับ (บาท)<input name="amount" id="payment-amount" inputmode="decimal" required></label><label>วิธีรับเงิน<input name="method" required maxlength="30" placeholder="เช่น bank_transfer"></label><label>เลขอ้างอิง<input name="reference" required maxlength="120"></label><button type="submit" class="primary">บันทึกรับเงิน</button></form></section></section>
       <section id="admin-teaching" class="panel new-section"><h2>ตรวจเวลาสอน</h2><p class="muted">เช็กชื่อครบทุกคนก่อนอนุมัติ ระบบจะใช้อัตราที่คุณยืนยันไว้</p><div class="tablewrap"><table><thead><tr><th>ครู / คอร์ส</th><th>เวลาสอนจริง</th><th>พัก</th><th>เข้าเรียน</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-times"></tbody></table></div></section>
       <section id="admin-rates" class="panel new-section"><h2>อัตราค่าจ้างครู</h2><p class="muted">อัตรากลางที่ยืนยันแล้วใช้คำนวณค่าจ้างทุกวิชาและทุกครูตามระดับชั้นกับจำนวนผู้เรียน 1–3, 4–6, 7–9 และ 10–13 คน หากมีข้อตกลงเฉพาะครูหรือวิชา ให้เพิ่มอัตราเฉพาะพร้อมแหล่งอ้างอิง</p><div class="tablewrap"><table><thead><tr><th>ขอบเขต / วิชา / ระดับ</th><th>ผู้เรียน</th><th>บาทต่อชั่วโมง</th><th>สถานะ</th><th>ที่มา / ข้อสังเกต</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-rates-rows"></tbody></table></div><details class="rate-create"><summary>เพิ่มอัตราค่าจ้างที่ตรวจสอบแล้ว</summary><form data-action="admin-rate-create" class="live-form live-form-grid"><label>ขอบเขต<select name="scope" id="rate-scope" required><option value="global">อัตรากลางทุกครู</option><option value="teacher">เฉพาะครู</option></select></label><label id="rate-teacher-field" hidden>ครู<select name="teacher_id" id="rate-teacher"></select></label><label id="rate-subject-field" hidden>วิชา<select name="subject" id="rate-subject" required><option value="all">ทุกวิชา</option><option value="science">วิทยาศาสตร์</option><option value="math">คณิตศาสตร์</option><option value="physics">ฟิสิกส์</option><option value="chemistry">เคมี</option><option value="biology">ชีววิทยา</option><option value="chemistry_biology">เคมี/ชีววิทยา</option><option value="english">อังกฤษ</option><option value="thai">ไทย</option><option value="social">สังคม</option><option value="other">อื่น ๆ</option></select></label><label>ระดับ<select name="level"><option value="middle">มัธยมต้น</option><option value="high">มัธยมปลาย</option></select></label><label>จำนวนนักเรียนต่ำสุด<input name="min_students" type="number" min="1" max="100" required></label><label>จำนวนนักเรียนสูงสุด<input name="max_students" type="number" min="1" max="100" required></label><label>บาทต่อชั่วโมง<input name="rate" inputmode="decimal" required></label><label>เริ่มใช้<input name="effective_from" type="date" required></label><label>สิ้นสุด (ถ้ามี)<input name="effective_to" type="date"></label><label class="wide-field">ที่มา/หลักฐานของอัตรา<input name="source_note" required maxlength="250" placeholder="เช่น แถวในชีตอัตราค่าจ้าง หรือข้อตกลงที่ยืนยันแล้ว"></label><button type="submit" class="primary">บันทึกอัตราที่ยืนยันแล้ว</button></form></details></section>
       <section id="admin-classroom" class="new-section"><section class="panel"><div class="panel-head"><div><h2>จัดห้องเรียนและตารางเรียน</h2><p class="muted">ผู้ดูแลเป็นผู้กำหนดห้อง ครู วันเวลา และรายชื่อนักเรียนทุกคน ไม่มีการจัดเข้าห้องอัตโนมัติ</p></div></div><form data-action="admin-class-create" class="live-form live-form-grid"><label>คอร์ส / รหัสวิชา<select name="course_id" id="class-course" required></select></label><label>ครูผู้สอน<select name="teacher_id" id="class-teacher" required></select></label><label>ห้องเรียน<input name="room_name" required maxlength="80" placeholder="เช่น ห้อง A / ออนไลน์ 1"></label><label>เริ่มเรียน (เวลาไทย)<input name="starts_at" type="datetime-local" required></label><label>เลิกเรียน (เวลาไทย)<input name="ends_at" type="datetime-local" required></label><fieldset class="class-roster-field wide-field"><legend>เลือกรายชื่อนักเรียนในห้อง</legend><p class="foot">แสดงเฉพาะผู้สมัครคอร์สที่เลือก กรุณาตรวจชื่อก่อนบันทึก</p><div id="admin-class-students" class="class-student-picker"></div></fieldset><button type="submit" class="primary">สร้างห้องเรียนตามที่จัด</button></form></section><section class="panel"><h2>ห้องเรียนทั้งหมด</h2><p class="muted">เปิดรายชื่อเพื่อดูผู้เรียน เปลี่ยนห้อง เวลา ครู หรือจัดรายชื่อใหม่ได้ก่อนคาบเริ่มและตามเงื่อนไขของระบบ</p><div class="tablewrap"><table><thead><tr><th>คอร์ส / รหัสวิชา</th><th>ห้อง</th><th>วันและเวลา</th><th>ครูผู้สอน</th><th>รายชื่อที่จัด</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody id="admin-classes-rows"></tbody></table></div></section></section>
@@ -265,30 +408,101 @@
       <section id="admin-reports" class="panel new-section"><h2>ส่งออกข้อมูลสำหรับ Google Sheets</h2><p class="muted">เลือกชุดข้อมูลเพื่อดาวน์โหลด CSV แล้วนำเข้าใน Google Sheets ของร้าน ข้อมูลต้นฉบับอยู่ในฐานข้อมูลของระบบ</p><div class="report-controls"><label for="report-kind">ชุดข้อมูล</label><select id="report-kind"><option value="students">นักเรียนและข้อมูลผู้ปกครอง</option><option value="teachers">ครู</option><option value="courses">คอร์สเรียน</option><option value="classes">ห้องเรียนและตารางสอน</option><option value="class_rosters">รายชื่อในห้องและการเข้าเรียน</option><option value="enrollments">การสมัครเรียน</option><option value="invoices">ใบแจ้งยอด</option><option value="payments">การรับเงิน</option><option value="receipts">ใบสำคัญรับเงิน</option><option value="claims">รายการแจ้งชำระ</option><option value="teaching">เวลาสอน</option><option value="payroll">งวดค่าจ้าง</option><option value="rates">อัตราค่าจ้าง</option></select><button type="button" class="primary" data-action="export-report">ดาวน์โหลด CSV</button></div><p class="foot">ไฟล์นักเรียนมีข้อมูลผู้ปกครอง กรุณาเก็บใน Google Sheet ที่จำกัดสิทธิ์เฉพาะผู้ดูแล</p></section>`;
   }
 
+  function installLivePanels() {
+    if (state.me.role === 'student') {
+      const section = $('student-payments');
+      const panel = element('section', 'panel transfer-panel');
+      panel.innerHTML = '<div class="panel-head"><div><h2>บัญชีสำหรับโอนค่าเรียน</h2><p class="muted">โอนตามยอดในใบแจ้งยอดของคุณ แล้วแจ้งเลขอ้างอิงให้ผู้ดูแลตรวจสอบ</p></div></div><div class="transfer-account"><div><span class="transfer-bank" id="transfer-bank">—</span><strong id="transfer-number">—</strong><span id="transfer-holder">—</span></div><button type="button" data-action="copy-payment-account">คัดลอกเลขบัญชี</button></div>';
+      section.prepend(panel);
+    } else if (state.me.role === 'admin') {
+      const finance = $('admin-finance');
+      const panel = element('section', 'panel transfer-admin-panel');
+      panel.innerHTML = '<h2>บัญชีรับโอนค่าเรียน</h2><p class="muted">ข้อมูลนี้แสดงเฉพาะนักเรียนที่เข้าสู่ระบบ ผู้ดูแลแก้ไขได้เมื่อบัญชีรับเงินเปลี่ยน</p><form data-action="admin-payment-account" class="live-form live-form-grid"><label>ธนาคาร<input name="bank_name" required maxlength="80"></label><label>รหัสธนาคาร<input name="bank_code" required maxlength="20"></label><label>ชื่อบัญชี<input name="account_name" required maxlength="120"></label><label>เลขบัญชี<input name="account_number" required maxlength="30" inputmode="numeric"></label><button type="submit" class="primary">บันทึกบัญชีรับโอน</button></form>';
+      finance.prepend(panel);
+      const reports = $('admin-reports');
+      reports.innerHTML = '<h2>การเชื่อมต่อ Google Sheet</h2><p class="muted">ข้อมูลที่บันทึกในระบบจะส่งเข้าชีตอัตโนมัติ ฐานข้อมูลเว็บไซต์ยังเป็นข้อมูลหลัก</p><div class="sheet-sync-status" id="sheet-sync-status" role="status">กำลังตรวจสถานะ…</div><div class="sheet-sync-actions"><a id="sheet-sync-link" target="_blank" rel="noopener noreferrer" hidden>เปิด Google Sheet</a><button type="button" data-action="retry-sheet-sync">ลองซิงก์รายการค้างอีกครั้ง</button></div><p class="foot">หากการเชื่อมต่อขัดข้อง ระบบเก็บรายการที่ต้องซิงก์ไว้และลองใหม่ตามกำหนด</p>';
+    }
+  }
+
+  function renderPaymentAccount() {
+    const account = state.paymentAccount;
+    if (state.me.role === 'student') {
+      $('transfer-bank').textContent = account?.bank_name || 'ยังไม่ได้ระบุธนาคาร';
+      $('transfer-number').textContent = account?.account_number || 'ยังไม่ได้ระบุเลขบัญชี';
+      $('transfer-holder').textContent = account?.account_name || 'กรุณาติดต่อผู้ดูแล';
+      const copyButton = document.querySelector('[data-action="copy-payment-account"]');
+      if (copyButton) copyButton.disabled = !account?.account_number;
+    } else if (state.me.role === 'admin') {
+      const form = document.querySelector('form[data-action="admin-payment-account"]');
+      if (!form) return;
+      for (const key of ['bank_name', 'bank_code', 'account_name', 'account_number']) {
+        form.elements.namedItem(key).value = account?.[key] || '';
+      }
+    }
+  }
+
+  function renderSheetSyncStatus() {
+    if (state.me.role !== 'admin') return;
+    const statusBox = $('sheet-sync-status');
+    const link = $('sheet-sync-link');
+    if (!statusBox || !link) return;
+    const status = state.sheetSyncStatus;
+    statusBox.classList.toggle('needs-setup', !status?.configured || Boolean(status?.last_error_code));
+    statusBox.dataset.state = !status?.configured ? 'unconfigured' : (status.pending || status.last_error_code || !status.last_success_at ? 'pending' : 'ready');
+    const lastSync = status?.last_success_at ? new Date(status.last_success_at) : null;
+    const lastSyncLabel = lastSync && !Number.isNaN(lastSync.getTime())
+      ? new Intl.DateTimeFormat('th-TH', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' }).format(lastSync)
+      : null;
+    statusBox.textContent = !status?.configured
+      ? 'ยังไม่ได้เชื่อมบัญชี Google สำหรับซิงก์ข้อมูล กรุณาตั้งค่าฝั่งเซิร์ฟเวอร์ตามคู่มือติดตั้ง'
+      : status.last_error_code
+        ? `ซิงก์ไม่สำเร็จชั่วคราว · ค้าง ${Number(status.pending || 0)} ชุดข้อมูล · ระบบจะลองใหม่อัตโนมัติ`
+        : lastSyncLabel
+          ? `ซิงก์ล่าสุด ${lastSyncLabel} · ค้าง ${Number(status.pending || 0)} ชุดข้อมูล`
+          : `ตั้งค่าการเชื่อมต่อแล้ว · รอซิงก์ครั้งแรก ${Number(status.pending || 0)} ชุดข้อมูล`;
+    const url = status?.sheet_url || '';
+    if (/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(url)) {
+      link.href = url; link.hidden = false;
+    } else {
+      link.removeAttribute('href'); link.hidden = true;
+    }
+  }
+
   async function load() {
     const role = state.me.role;
     if (role === 'student') {
-      const [dashboard, catalog, classes] = await Promise.all([api('/api/student/dashboard'), api('/api/courses'), api('/api/student/classes')]);
+      const [dashboard, catalog, classes, paymentAccount] = await Promise.all([api('/api/student/dashboard'), api('/api/courses'), api('/api/student/classes'), api('/api/payment-account')]);
       state.data = dashboard;
       state.courses = catalog.courses || [];
       state.classes = classes.classes || [];
+      state.paymentAccount = paymentAccount.payment_account || null;
     } else if (role === 'teacher') {
       const [dashboard, payroll, classes] = await Promise.all([api('/api/teacher/dashboard'), api('/api/teacher/payroll'), api('/api/teacher/classes')]);
       state.data = { ...dashboard, ...payroll };
       state.classes = classes.classes || [];
     } else {
-      const [dashboard, rates, catalog, payroll, users, tuition, academic] = await Promise.all([
-        api('/api/admin/dashboard'), api('/api/admin/rates'), api('/api/courses'), api('/api/admin/payroll-runs'), api('/api/admin/users'), api('/api/admin/invoices'), api('/api/admin/academic')
+      const [dashboard, rates, catalog, payroll, users, tuition, academic, paymentAccount, sheetSyncStatus] = await Promise.all([
+        api('/api/admin/dashboard'), api('/api/admin/rates'), api('/api/courses'), api('/api/admin/payroll-runs'), api('/api/admin/users'), api('/api/admin/invoices'), api('/api/admin/academic'), api('/api/payment-account'), api('/api/admin/sheet-sync/status')
       ]);
       state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || users.users || [], unbilled_enrollments: tuition.enrollments || [] };
       state.courses = catalog.courses || [];
       state.academic = academic;
       state.classes = academic.classes || [];
+      state.paymentAccount = paymentAccount.payment_account || null;
+      state.sheetSyncStatus = sheetSyncStatus;
     }
+    const hadView = Boolean(state.viewTargetId);
+    const priorScrollY = window.scrollY;
     $('live-content').innerHTML = formLayout();
+    installLivePanels();
     if (role === 'student') renderStudent();
     else if (role === 'teacher') renderTeacher();
     else renderAdmin();
+    if (role !== 'teacher') renderPaymentAccount();
+    if (role === 'admin') { renderSheetSyncStatus(); updateAdminPaymentAlert(state.data.pending_payment_claims || []); }
+    const target = state.viewTargetId || hashTarget() || 'overview';
+    if (!showView(target, { historyMode: hadView ? 'none' : 'replace', scroll: !hadView })) showView('overview', { historyMode: 'replace', scroll: !hadView });
+    if (hadView) window.scrollTo({ top: priorScrollY, behavior: 'auto' });
   }
 
   function renderStudent() {
@@ -895,6 +1109,12 @@
         case 'admin-invoice':
           await api('/api/admin/invoices', 'POST', { enrollment_id: validId(values.enrollment_id), amount_satang: toSatang(values.amount), due_date: values.due_date, description: values.description.trim() });
           message = 'แจ้งยอดค่าเรียนในบัญชีนักเรียนแล้ว'; break;
+        case 'admin-payment-account':
+          await api('/api/admin/payment-account', 'PUT', {
+            bank_code: values.bank_code.trim(), bank_name: values.bank_name.trim(),
+            account_name: values.account_name.trim(), account_number: values.account_number.trim()
+          });
+          message = 'บันทึกบัญชีรับโอนแล้ว'; break;
         case 'admin-rate-create':
           await api('/api/admin/rates', 'POST', {
             scope: values.scope,
@@ -922,13 +1142,46 @@
     const button = event.target.closest('button[data-action]');
     if (!button) return;
     const action = button.dataset.action;
+    if (action === 'dismiss-payment-alert') {
+      $('payment-alert-toast').hidden = true;
+      return;
+    }
+    if (action === 'open-payment-alerts') {
+      const toast = $('payment-alert-toast');
+      if (toast) toast.hidden = true;
+      showView('admin-claims', { historyMode: 'push', scroll: true, animate: true, focus: true });
+      animateNavSelection('admin-finance');
+      await task(button, async () => {
+        feedback('กำลังโหลดรายการแจ้งชำระ…', false, true);
+        await load();
+        showView('admin-claims', { scroll: true, focus: true });
+        feedback('');
+      });
+      return;
+    }
+    if (action === 'copy-payment-account') {
+      await task(button, async () => {
+        if (!state.paymentAccount?.account_number) throw new Error('ยังไม่มีเลขบัญชีรับโอน');
+        await navigator.clipboard.writeText(state.paymentAccount.account_number.replace(/\D/g, ''));
+        feedback('คัดลอกเลขบัญชีแล้ว');
+      });
+      return;
+    }
+    if (action === 'retry-sheet-sync') {
+      await task(button, async () => {
+        state.sheetSyncStatus = await api('/api/admin/sheet-sync/retry', 'POST', {});
+        renderSheetSyncStatus();
+        feedback(`ตรวจการซิงก์แล้ว · เหลือ ${Number(state.sheetSyncStatus.pending || 0)} รายการ`);
+      });
+      return;
+    }
     if (action === 'export-report') {
       await task(button, async () => { const count = await exportReport(); feedback(`ดาวน์โหลดข้อมูล ${count} รายการแล้ว`); });
       return;
     }
     if (action === 'jump') {
-      const target = $(button.dataset.target);
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const fromNav = Boolean(button.closest('#side-nav,#mobile-nav'));
+      if (showView(button.dataset.target, { historyMode: 'push', scroll: true, animate: true, focus: !fromNav })) animateNavSelection(state.viewId);
       return;
     }
     if (action === 'dismiss-class-alert') {
@@ -938,7 +1191,7 @@
     }
     if (action === 'select-time') {
       setTeacherTime(button.dataset.id);
-      $('teacher-time').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (showView('teacher-time', { historyMode: 'push', scroll: true, animate: true, focus: true })) animateNavSelection('teacher-time');
       return;
     }
     if (action === 'staff-add') {
@@ -1443,8 +1696,8 @@
   }
 
   async function start() {
+    document.body.classList.add('live-ready', 'loading-screen');
     document.body.innerHTML = '<main class="live-loading"><img src="physics-plus-logo-yellow-black.png" alt="Physics Plus"><p>กำลังตรวจสอบบัญชี…</p></main>';
-    document.body.classList.add('live-ready');
     try {
       const me = await api('/api/me');
       if (!me.authenticated || !me.user) { location.replace('index.html'); return; }
@@ -1456,6 +1709,7 @@
         passwordDialog(true); return;
       }
       await load();
+      window.setTimeout(() => document.body.classList.add('dashboard-mounted'), 520);
     } catch (error) {
       document.body.innerHTML = '';
       const main = element('main', 'live-loading');

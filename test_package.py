@@ -182,6 +182,21 @@ class DeploymentPackageTests(unittest.TestCase):
                              json={"invoice_id": invoice.json["invoice_id"], "reference": "TEST-REF"})
         self.assertEqual(claim.status_code, 201, claim.json)
         self.assertEqual(claim.json["amount_satang"], 175000)
+        alerts_url = "/api/admin/payment-alerts"
+        self.assertEqual(student.get(alerts_url, base_url=self.base_url).status_code, 403)
+        self.assertEqual(site.app.test_client().get(alerts_url, base_url=self.base_url).status_code, 401)
+        alerts = admin.get(alerts_url, base_url=self.base_url)
+        self.assertEqual(alerts.status_code, 200, alerts.json)
+        self.assertEqual(alerts.json["pending_count"], 1)
+        self.assertEqual(alerts.json["pending_payment_claims"][0]["id"], claim.json["claim_id"])
+        self.assertEqual(alerts.json["pending_payment_claims"][0]["student_name"], "Example Student")
+        self.assertEqual(alerts.json["pending_payment_claims"][0]["amount_satang"], 175000)
+        self.assertNotIn("guardian_phone", str(alerts.json))
+        approved = admin.post(f"/api/admin/payment-claims/{claim.json['claim_id']}/approve",
+                              base_url=self.base_url, headers=admin_headers, json={})
+        self.assertEqual(approved.status_code, 200, approved.json)
+        after_review = admin.get(alerts_url, base_url=self.base_url).json
+        self.assertEqual(after_review, {"pending_payment_claims": [], "pending_count": 0})
 
     def test_payment_receipts_follow_course_purchase_and_are_private(self) -> None:
         self.owner.bootstrap_admin(None, "Admin", "SafeTestPassword123!", "physicsplus")

@@ -70,3 +70,113 @@ dialog{background:#21231d;border-color:#efe1a949;color:#f7f4e6}dialog .close{col
 @media(min-width:760px){.portal-layout{grid-template-columns:minmax(0,1.2fr) minmax(350px,.8fr);gap:clamp(40px,6vw,90px)}.auth-card{max-width:450px;padding:27px 30px 22px}}
 @media(max-width:759px){.portal-layout{padding-top:32px}.auth-card{width:min(100%,450px);padding:23px 22px 19px}.auth-heading{margin:17px 0 17px}.story{margin-top:34px}}
 @media(max-width:380px){.auth-card{padding-inline:17px}.card-status{max-width:150px;text-align:right}}
+
+/* Physics Plus glass treatment: warm light, clear form contrast, and restrained motion. */
+.topbar{position:relative;z-index:2;background:#10120fdf;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.brand img{box-shadow:0 0 0 3px #ffdb4920,0 5px 18px #0006}
+.story h1>span{color:#ffda51;background:linear-gradient(105deg,#fff0a7 3%,#ffd743 49%,#edb91f 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.story .dot{-webkit-text-fill-color:#fff6c8}
+.story-top .mini-line{box-shadow:0 0 16px #ffda5180}
+.subjects button{box-shadow:inset 0 1px 0 #fff1,0 3px 12px #0002}
+.subjects button.active{box-shadow:0 4px 20px #fbd2462a,inset 0 1px 0 #fff8}
+.subject-display{isolation:isolate;border-color:#f8dc6970;background:linear-gradient(115deg,#293020d9,#161b16de 65%,#251d10de);box-shadow:0 18px 50px #0006,inset 0 1px 0 #fff2}
+.subject-display::before{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(circle at 82% 45%,#f6d25229,transparent 39%);pointer-events:none}
+.subject-display:hover{border-color:#ffe992a8;box-shadow:0 22px 55px #0007,0 0 28px #e6c2411a,inset 0 1px 0 #fff3}
+.subject-visual strong{filter:drop-shadow(0 0 13px #ffc63855)}
+.subject-switch .subject-display-copy,.subject-switch .subject-visual strong{animation:showcase-in .32s cubic-bezier(.2,.8,.2,1) both}
+.subject-switch .subject-visual strong{animation-delay:.06s}
+@keyframes showcase-in{from{opacity:.2;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.auth-card{position:relative;isolation:isolate;overflow:hidden;border:1px solid transparent;background:linear-gradient(145deg,#282b25ed 0%,#191c17eb 50%,#11140fec 100%) padding-box,linear-gradient(135deg,#fff3b2b8 0%,#b6933159 31%,#f9e68c3b 72%,#fff3bd84 100%) border-box;box-shadow:0 29px 92px #0009,0 0 56px #e9c53a16,inset 0 1px 0 #fff2;backdrop-filter:blur(30px) saturate(125%);-webkit-backdrop-filter:blur(30px) saturate(125%);animation:auth-enter .65s cubic-bezier(.2,.8,.2,1) both;transition:box-shadow .3s,border-color .3s,transform .3s}
+.auth-card::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 75% 45% at 0 0,#f4da7c24,transparent 75%),radial-gradient(ellipse 58% 35% at 100% 100%,#f2c32d12,transparent 85%)}
+.auth-card::after{content:"";position:absolute;top:0;left:12%;right:12%;height:1px;z-index:1;pointer-events:none;background:linear-gradient(90deg,transparent,#fff4b7c4,transparent);box-shadow:0 0 18px #ffdf6d8c}
+.auth-card>*{position:relative;z-index:1}
+.auth-card:hover{box-shadow:0 33px 100px #000a,0 0 66px #e9c53a24,inset 0 1px 0 #fff3}
+@keyframes auth-enter{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+.tiny-mark{box-shadow:0 5px 20px #e8bd3a4a,inset 0 1px 0 #fff9}
+.card-status i{box-shadow:0 0 0 4px #f6d7471a,0 0 14px #f9d64f7b;animation:status-glow 3.6s ease-in-out infinite}
+@keyframes status-glow{50%{box-shadow:0 0 0 6px #f6d7470d,0 0 23px #f9d64fa8}}
+.auth-heading h2{letter-spacing:-.045em}
+.auth-tabs{border:1px solid #f5e4a31d;box-shadow:inset 0 1px 3px #0006}
+.auth-tabs button{transition:background .2s,color .2s,box-shadow .2s}
+.auth-tabs button:not(.selected):hover{color:#fff2c1;background:#f4db7220}
+.auth-tabs button.selected{box-shadow:0 3px 14px #e3bb3d3d,inset 0 1px 0 #fff9}
+.field,#full-name,.profile-fields input,.profile-fields select{background:#0c100dda;border-color:#e6dcaa36;box-shadow:inset 0 1px 3px #0004;transition:border-color .2s,box-shadow .2s,background .2s}
+.field:hover,#full-name:hover,.profile-fields input:hover,.profile-fields select:hover{border-color:#f6dd796b}
+.field:focus-within,#full-name:focus,.profile-fields input:focus,.profile-fields select:focus{background:#101610;border-color:#f3d264;box-shadow:0 0 0 3px #f3d26429,0 0 25px #e9c04116}
+.password-toggle{border-radius:7px;transition:background .2s,color .2s}
+.password-toggle:hover{background:#f2d9781c}
+.enter-button{position:relative;overflow:hidden;box-shadow:0 7px 24px #e8bd3a30,inset 0 1px 0 #fff9;transition:transform .2s,background .2s,box-shadow .2s}
+.enter-button::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 25%,#fff9 50%,transparent 75%);transform:translateX(-130%);transition:transform .6s ease}
+.enter-button:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 30px #e8bd3a49,inset 0 1px 0 #fff9}
+.enter-button:hover:not(:disabled)::before{transform:translateX(130%)}
+.enter-button:active:not(:disabled){transform:translateY(0)}
+.enter-button:disabled{cursor:not-allowed;box-shadow:none;opacity:.72}
+.enter-button span{position:relative;z-index:1}
+.enter-button span:last-child{transition:transform .2s}.enter-button:hover:not(:disabled) span:last-child{transform:translateX(4px)}
+@media(max-width:759px){.auth-card{backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}.story h1>span{background:linear-gradient(100deg,#fff0a7,#ffd743 65%,#edb91f);background-clip:text;-webkit-background-clip:text}}
+@media(prefers-reduced-motion:reduce){.auth-card,.card-status i,.subject-switch .subject-display-copy,.subject-switch .subject-visual strong{animation:none!important}.auth-card,.auth-tabs button,.field,#full-name,.profile-fields input,.profile-fields select,.password-toggle,.enter-button,.enter-button::before,.enter-button span:last-child{transition:none!important}.enter-button:hover:not(:disabled){transform:none}}
+.motion-paused .auth-card,.motion-paused .card-status i,.motion-paused .subject-switch .subject-display-copy,.motion-paused .subject-switch .subject-visual strong{animation:none!important}
+.motion-paused .enter-button::before,.motion-paused .enter-button span:last-child{transition:none!important}
+
+/* The login reference uses one broad glass panel and diagonal light behind it. */
+.ambient{background:linear-gradient(180deg,#0c0f0ce9,#0c0f0cf1),url('physics-hero-gold.png') center/cover no-repeat}
+.ambient::before{opacity:.18;background-size:110px 110px}
+.ambient span{opacity:.045}
+.portal-layout{position:relative;z-index:1}
+.auth-stage{position:relative;isolation:isolate;width:min(100%,485px);justify-self:end}
+.auth-stage::before{content:"";position:absolute;z-index:-1;inset:-75px -55px;pointer-events:none;background:linear-gradient(132deg,transparent 18%,#ffdb674d 18.2%,#ffdb6712 18.6%,transparent 19.2%),linear-gradient(132deg,transparent 26%,#f8d76152 26.2%,#f8d76111 26.6%,transparent 27.3%),linear-gradient(132deg,transparent 72%,#f9d45a43 72.2%,#f9d45a0a 72.6%,transparent 73.2%),radial-gradient(ellipse 58% 40% at 48% 54%,#e4ba332e,transparent 75%);filter:blur(2px);opacity:.85}
+.auth-stage::after{content:"";position:absolute;right:2px;bottom:17px;z-index:3;width:43px;height:1px;pointer-events:none;background:linear-gradient(90deg,transparent,#ffe593 36%,#fff9c7 65%,transparent);transform:rotate(-45deg);box-shadow:0 0 11px #ffd455c2}
+.auth-stage .auth-card{width:100%;max-width:none;margin:0;padding:30px 34px 25px;border:1px solid transparent;border-radius:23px;background:linear-gradient(135deg,#343a32bf 0%,#1d241edb 45%,#111812eb 100%) padding-box,linear-gradient(128deg,#fff5bbbd 0%,#dbc3636e 32%,#c2b8713d 70%,#ffe899ad 100%) border-box;box-shadow:inset 0 1px 0 #fff4,0 24px 80px #0008,0 0 42px #eac84c20;clip-path:polygon(0 0,100% 0,100% calc(100% - 31px),calc(100% - 31px) 100%,0 100%);backdrop-filter:blur(32px) saturate(115%);-webkit-backdrop-filter:blur(32px) saturate(115%)}
+.auth-stage .auth-card::before{background:linear-gradient(145deg,#fff6bb17,transparent 32%),radial-gradient(ellipse 88% 52% at 100% 0,#f3d67216,transparent 70%)}
+.auth-stage .auth-card::after{top:0;left:24px;right:50px;height:1px;background:linear-gradient(90deg,#fff1b5c9,#ffe59630 65%,transparent);box-shadow:0 0 14px #ffdf6d7d}
+.auth-stage .auth-card:hover{box-shadow:inset 0 1px 0 #fff5,0 29px 84px #0009,0 0 52px #eac84c2c}
+.auth-stage .auth-heading{text-align:left;margin:22px 0 22px}
+.auth-stage .auth-heading h2{font-size:28px;line-height:1.35}
+.auth-stage .auth-heading>p:last-child{margin-top:7px}
+.auth-stage .card-top{padding-bottom:5px}
+.auth-stage .auth-tabs{padding:5px;border-radius:12px;margin-bottom:17px;background:#0a0f0cc4}
+.auth-stage .auth-tabs button{padding:10px 11px}
+.auth-stage .role-auto{text-align:left;margin-bottom:17px}
+.auth-stage .field,.auth-stage #full-name,.auth-stage .profile-fields input,.auth-stage .profile-fields select{border-radius:11px;background:#0b120fe1;border-color:#f2e8b43f}
+.auth-stage .field input{padding:13px 0}
+.auth-stage .enter-button{min-height:48px;margin-top:24px;border-radius:11px;background:linear-gradient(95deg,#f3c944,#ffe17b 53%,#f3c944);border-color:#ffe18e;box-shadow:0 0 23px #f1cd5160,0 9px 27px #ddb53338,inset 0 1px 0 #fff9}
+.auth-stage .enter-button:hover:not(:disabled){background:linear-gradient(95deg,#f6d052,#ffe993 53%,#f6d052);box-shadow:0 0 30px #f1cd5178,0 12px 31px #ddb5334f,inset 0 1px 0 #fff9}
+.auth-stage .card-footer{margin-top:18px}
+@media(min-width:760px){.portal-layout{grid-template-columns:minmax(0,1fr) minmax(380px,.91fr);gap:clamp(42px,5.5vw,90px)}.auth-stage{max-width:485px}.ambient{background:linear-gradient(90deg,#0a0d0ae0 0%,#0b0e0bef 50%,#0b0e0bf7 100%),url('physics-hero-gold.png') left center/cover no-repeat}}
+@media(max-width:759px){.auth-stage{order:0;width:min(100%,485px);margin:0 auto}.story{order:1}.auth-stage .auth-card{padding:25px 22px 21px;backdrop-filter:blur(14px) saturate(115%);-webkit-backdrop-filter:blur(14px) saturate(115%)}.auth-stage .auth-heading{text-align:center}.auth-stage .role-auto{text-align:center}.auth-stage::before{inset:-35px -18px;opacity:.6}.auth-stage::after{right:2px;bottom:17px}}
+@media(max-width:390px){.auth-stage .auth-card{padding-inline:17px}.auth-stage .card-status{max-width:155px}}
+@media(prefers-reduced-motion:reduce){.auth-stage .auth-card{animation:none!important;transition:none!important}}
+/* Browser autofill must use the same dark surface as manually entered values. */
+.auth-card input:-webkit-autofill,.auth-card input:-webkit-autofill:hover,.auth-card input:-webkit-autofill:focus{-webkit-text-fill-color:#f5f3e7!important;caret-color:#f5f3e7;-webkit-box-shadow:0 0 0 1000px #0b120f inset!important}
+.auth-card #full-name:-webkit-autofill:focus,.auth-card .profile-fields input:-webkit-autofill:focus{-webkit-box-shadow:0 0 0 1000px #0b120f inset,0 0 0 3px #f3d26429,0 0 25px #e9c04116!important}
+
+/* Motion from the reference: drifting light, a rim pulse, and a ring on mode/submit changes. */
+.auth-stage::before{animation:streak-drift 6.4s ease-in-out infinite alternate;will-change:transform}
+@keyframes streak-drift{from{transform:translate3d(-12px,8px,0);opacity:.68}to{transform:translate3d(13px,-9px,0);opacity:.9}}
+.auth-stage::after{animation:edge-light 3.6s ease-in-out infinite}
+.auth-stage .auth-card::after{animation:edge-light 4.2s ease-in-out infinite .5s}
+@keyframes edge-light{50%{opacity:.44}}
+.auth-card>.auth-wave{position:absolute;z-index:2;top:var(--wave-y,50%);left:var(--wave-x,50%);width:540px;height:540px;max-width:none;border:1px solid #ffe894a8;border-radius:50%;background:radial-gradient(circle,transparent 42%,#ffdb5630 49%,transparent 56%);box-shadow:0 0 28px #ffd86170,inset 0 0 24px #ffd86135;opacity:0;pointer-events:none;transform:translate3d(-50%,-50%,0) scale(.04)}
+.auth-card.auth-switch>.auth-wave,.auth-card.auth-pulse>.auth-wave{animation:auth-ring .6s cubic-bezier(.16,.7,.18,1) both}
+@keyframes auth-ring{0%{opacity:0;transform:translate3d(-50%,-50%,0) scale(.04)}22%{opacity:.78}100%{opacity:0;transform:translate3d(-50%,-50%,0) scale(1.55)}}
+.auth-card.auth-switch .auth-heading,.auth-card.auth-switch #auth-panel{animation:auth-reveal .31s cubic-bezier(.2,.8,.2,1) both}
+.auth-card.auth-switch #auth-panel{animation-delay:.05s}
+@keyframes auth-reveal{from{opacity:.28;transform:translate3d(0,8px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+.auth-stage .enter-button{transition:transform .16s ease,background .16s ease}
+.auth-stage .auth-card{transition:none}
+.auth-stage .auth-card:hover{box-shadow:inset 0 1px 0 #fff4,0 24px 80px #0008,0 0 42px #eac84c20}
+.card-status i{animation:status-beat 3.6s ease-in-out infinite}
+@keyframes status-beat{50%{opacity:.65;transform:scale(.86)}}
+.auth-stage .enter-button:focus-visible{outline:3px solid #ffeb9d;outline-offset:3px}
+.auth-stage .enter-button:active:not(:disabled){transform:translateY(0) scale(.985)}
+.auth-stage .enter-button::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:3px;background:#fff7c9;opacity:0;transform:scaleX(0);transform-origin:left;pointer-events:none}
+.auth-stage .auth-card.is-submitting .enter-button:disabled,.auth-stage .auth-card.is-confirmed .enter-button:disabled{opacity:1;cursor:progress;box-shadow:0 0 23px #f1cd5160,0 9px 27px #ddb53338,inset 0 1px 0 #fff9}
+.auth-stage .auth-card.is-submitting .enter-button:disabled{transform:scale(.985)}
+.auth-stage .auth-card.is-submitting .enter-button::after{opacity:1;animation:submit-progress 1.7s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes submit-progress{to{transform:scaleX(.9)}}
+.auth-stage .auth-card.is-confirmed .enter-button::after{opacity:1;transform:scaleX(1)}
+.auth-stage .auth-card.is-confirmed .enter-button:disabled{background:#ffe99b;box-shadow:0 0 34px #f5d96e8a,inset 0 1px 0 #fffc}
+@media(prefers-reduced-motion:reduce){.auth-stage::before,.auth-stage::after,.auth-stage .auth-card::after,.auth-card.auth-switch>.auth-wave,.auth-card.auth-pulse>.auth-wave,.auth-card.auth-switch .auth-heading,.auth-card.auth-switch #auth-panel,.auth-stage .auth-card.is-submitting .enter-button::after{animation:none!important}.auth-stage .enter-button,.auth-stage .enter-button::after{transition:none!important}.auth-stage .enter-button:active:not(:disabled),.auth-stage .auth-card.is-submitting .enter-button:disabled{transform:none!important}}
+.motion-paused .auth-stage::before,.motion-paused .auth-stage::after,.motion-paused .auth-stage .auth-card::after,.motion-paused .auth-card.auth-switch>.auth-wave,.motion-paused .auth-card.auth-pulse>.auth-wave,.motion-paused .auth-card.auth-switch .auth-heading,.motion-paused .auth-card.auth-switch #auth-panel,.motion-paused .auth-stage .auth-card.is-submitting .enter-button::after{animation:none!important}
+.motion-paused .auth-stage .enter-button,.motion-paused .auth-stage .enter-button::after{transition:none!important}
+.motion-paused .auth-stage .enter-button:active:not(:disabled),.motion-paused .auth-stage .auth-card.is-submitting .enter-button:disabled{transform:none!important}

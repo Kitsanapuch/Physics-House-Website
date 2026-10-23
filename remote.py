@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import sqlite3
+import threading
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -27,6 +28,8 @@ from backend import (
     RATE_GRID_MIGRATION,
     Response,
     SCHEMA,
+    SHEET_SYNC_SCHEMA,
+    SHEET_DATASETS,
     fail,
     migrate_outbox_schema,
     migrate_academic_schema,
@@ -35,6 +38,7 @@ from backend import (
     migrate_receipts,
     seed_initial_courses,
     seed_initial_teachers,
+    seed_payment_account_and_sheet_queue,
     now,
     uid,
 )
@@ -216,9 +220,11 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
         self.database_url = database_url.rstrip("/")
         self.database_scheme = parsed.scheme
         self.auth_token = auth_token
-        # The inherited constructor's migration hook is deliberately a no-op.
-        # Remote migrations are an explicit management step, never a side
-        # effect of a Vercel cold start.
+        self._sheet_schema_ready = False
+        self._sheet_schema_lock = threading.Lock()
+        # Historical migrations remain an explicit management step. The two
+        # new additive sync/settings tables are safe to create once on the
+        # first connection of each warm worker.
         super().__init__(Path("/__remote_turso__"), origin, None)
         for extra in extra_origins or set():
             parsed_origin = urlsplit(extra)
@@ -255,6 +261,19 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             enabled = connection.execute("PRAGMA foreign_keys").fetchone()
             if enabled is None or enabled[0] != 1:
                 raise RuntimeError("Remote database must enforce foreign keys")
+            # New additive tables are created once per warm worker. This keeps
+            # existing production databases writable before a manual init can
+            # be run, without running the historical migrations on cold start.
+            if not self._sheet_schema_ready:
+                with self._sheet_schema_lock:
+                    if not self._sheet_schema_ready:
+                        connection.executescript(SHEET_SYNC_SCHEMA)
+                        users_exists = connection.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
+                        ).fetchone()
+                        if users_exists:
+                            seed_payment_account_and_sheet_queue(connection)
+                        self._sheet_schema_ready = True
             return ClosingRemoteConnection(connection)
         except BaseException:
             connection.close()
@@ -271,6 +290,7 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             seed_initial_teachers(conn)
             seed_initial_courses(conn)
             migrate_receipts(conn)
+            seed_payment_account_and_sheet_queue(conn)
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute(
                 "SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)
@@ -329,6 +349,9 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                 "SELECT COUNT(*) FROM payments p LEFT JOIN receipts r ON r.payment_id=p.id WHERE r.id IS NULL"
             ).fetchone()[0] if receipts_table else -1
             outbox_columns = {row[1] for row in conn.execute("PRAGMA table_info(notification_outbox)").fetchall()}
+            sheet_columns = {row[1] for row in conn.execute("PRAGMA table_info(sheet_sync_state)").fetchall()}
+            sheet_dataset_count = conn.execute("SELECT COUNT(*) FROM sheet_sync_state").fetchone()[0]
+            payment_account_count = conn.execute("SELECT COUNT(*) FROM payment_account WHERE id=1").fetchone()[0]
             user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
             course_columns = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
             teacher_nullable = next((row[3] == 0 for row in conn.execute("PRAGMA table_info(courses)").fetchall()
@@ -351,6 +374,8 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
             return {
                 "schema_initialized": bool(marker) and bool(throttle_table) and
                                       {"id", "first_attempt_at", "lease_token"}.issubset(outbox_columns) and
+                                      {"dataset", "revision", "synced_revision", "lease_token"}.issubset(sheet_columns) and
+                                      sheet_dataset_count >= len(SHEET_DATASETS) and payment_account_count == 1 and
                                       {"public_code"}.issubset(user_columns) and
                                       {"course_code", "subject_code"}.issubset(course_columns) and
                                       {"room_name", "teacher_id"}.issubset(class_columns) and
@@ -364,6 +389,8 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
                 "invalid_active_course_count": invalid_active,
                 "missing_public_code_count": missing_codes,
                 "payments_missing_receipts": payments_missing_receipts,
+                "sheet_dataset_count": sheet_dataset_count,
+                "payment_account_count": payment_account_count,
             }
 
     def handle(self, method: str, target: str, data: dict | None, headers: dict[str, str], client_ip: str) -> Response:

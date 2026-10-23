@@ -52,6 +52,29 @@ BRAND_CODES_MIGRATION = "physics_plus_codes_2026_10_21"
 COURSE_SEED_MIGRATION = "physics_plus_initial_courses_2026_10_21"
 INITIAL_TEACHERS = ("ครูตุ้ม", "ครูโรจน์", "ครูโจ้")
 INITIAL_COURSE_CAPACITY = 13
+DEFAULT_PAYMENT_ACCOUNT = ("ttb", "ทีเอ็มบีธนชาต", "ชดาภัษท สุดศิริ", "585-2-22394-9")
+SHEET_DATASETS = (
+    "students", "teachers", "courses", "classes", "class_rosters",
+    "enrollments", "invoices", "payments", "receipts", "claims",
+    "teaching", "payroll", "rates", "payroll_monthly", "payroll_summary", "payment_account",
+)
+SHEET_EVENT_DATASETS = {
+    "user": ("students", "teachers", "courses", "enrollments", "invoices", "receipts", "claims", "classes", "class_rosters", "teaching", "payroll", "payroll_monthly", "payroll_summary"),
+    "student_profile": ("students",),
+    "course": ("courses", "classes", "class_rosters", "enrollments", "teaching"),
+    "enrollment": ("students", "enrollments", "class_rosters"),
+    "class_session": ("classes", "class_rosters", "teaching", "payroll_monthly", "payroll_summary"),
+    "attendance": ("class_rosters",),
+    "rate_rule": ("rates", "payroll_monthly", "payroll_summary"),
+    "rate_schedule": ("rates", "payroll_monthly", "payroll_summary"),
+    "time_entry": ("teaching", "payroll_monthly", "payroll_summary"),
+    "invoice": ("invoices",),
+    "payment_claim": ("claims",),
+    "payment": ("payments", "receipts", "invoices"),
+    "payroll_run": ("payroll", "teaching", "payroll_monthly", "payroll_summary"),
+    "payroll_adjustment": ("payroll", "payroll_monthly", "payroll_summary"),
+    "payment_account": ("payment_account",),
+}
 
 
 def pending_teacher_email(user_id: str) -> str:
@@ -222,6 +245,23 @@ def user_json(row: sqlite3.Row) -> dict:
     code = row["public_code"]
     return {"id": row["id"], "email": public_email(row), "username": row["username"], "name": row["name"], "role": row["role"], "status": row["status"], "must_change_password": bool(row["must_change_password"]), "student_code": code if row["role"] == "student" else None, "teacher_code": code if row["role"] == "teacher" else None}
 
+
+SHEET_SYNC_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sheet_sync_state (
+  dataset TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0,
+  synced_revision INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL, synced_at INTEGER,
+  attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL DEFAULT 0,
+  lease_token TEXT, lease_until INTEGER, last_error_code TEXT,
+  CHECK(revision >= synced_revision AND synced_revision >= 0)
+);
+CREATE TABLE IF NOT EXISTS payment_account (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  bank_code TEXT NOT NULL, bank_name TEXT NOT NULL,
+  account_name TEXT NOT NULL, account_number TEXT NOT NULL,
+  updated_by TEXT REFERENCES users(id), updated_at INTEGER NOT NULL
+);
+"""
 
 SCHEMA = """
 PRAGMA foreign_keys=ON;
@@ -397,6 +437,7 @@ CREATE TABLE IF NOT EXISTS code_counters (
   prefix TEXT PRIMARY KEY, next_number INTEGER NOT NULL CHECK(next_number > 0)
 );
 """
+SCHEMA += SHEET_SYNC_SCHEMA
 
 
 def migrate_outbox_schema(conn: sqlite3.Connection) -> None:
@@ -405,6 +446,23 @@ def migrate_outbox_schema(conn: sqlite3.Connection) -> None:
     if "first_attempt_at" not in columns:
         conn.execute("ALTER TABLE notification_outbox ADD COLUMN first_attempt_at INTEGER")
         conn.execute("UPDATE notification_outbox SET first_attempt_at=created_at WHERE attempts>0")
+
+
+def seed_payment_account_and_sheet_queue(conn: sqlite3.Connection) -> None:
+    """Keep owner-provided bank details and initially backfill all report tabs."""
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute(
+        "INSERT OR IGNORE INTO payment_account"
+        "(id,bank_code,bank_name,account_name,account_number,updated_at) "
+        "VALUES(1,?,?,?,?,?)",
+        (*DEFAULT_PAYMENT_ACCOUNT, now()),
+    )
+    current = now()
+    conn.executemany(
+        "INSERT OR IGNORE INTO sheet_sync_state(dataset,revision,updated_at) VALUES(?,1,?)",
+        [(dataset, current) for dataset in SHEET_DATASETS],
+    )
+    conn.commit()
 
 
 def next_public_code(conn: sqlite3.Connection, prefix: str) -> str:
@@ -692,6 +750,7 @@ class PhysicsPlusApp:
             seed_initial_teachers(conn)
             seed_initial_courses(conn)
             migrate_receipts(conn)
+            seed_payment_account_and_sheet_queue(conn)
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute("SELECT 1 FROM app_migrations WHERE key=?", (RATE_GRID_MIGRATION,)).fetchone():
                 # The old, unconfirmed four-row sample is superseded by the owner's
@@ -707,7 +766,17 @@ class PhysicsPlusApp:
 
     def audit(self, conn: sqlite3.Connection, actor_id: str | None, entity: str, entity_id: str, action: str, details: dict | None = None) -> str:
         event_id = uid()
-        conn.execute("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)", (event_id, actor_id, entity, entity_id, action, json.dumps(details or {}, ensure_ascii=False, separators=(",", ":")), now()))
+        current = now()
+        conn.execute("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)", (event_id, actor_id, entity, entity_id, action, json.dumps(details or {}, ensure_ascii=False, separators=(",", ":")), current))
+        if not (entity == "user" and action in {"login", "change_password", "reset_password", "bootstrap_admin", "update_admin_account"}):
+            conn.executemany(
+                "INSERT INTO sheet_sync_state(dataset,revision,updated_at,next_attempt_at) "
+                "VALUES(?,1,?,0) ON CONFLICT(dataset) DO UPDATE SET "
+                "revision=revision+1,updated_at=excluded.updated_at,"
+                "next_attempt_at=CASE WHEN sheet_sync_state.last_error_code IS NULL "
+                "THEN 0 ELSE sheet_sync_state.next_attempt_at END",
+                [(dataset, current) for dataset in SHEET_EVENT_DATASETS.get(entity, ())],
+            )
         return event_id
 
     def enqueue_notice(self, conn: sqlite3.Connection, audit_event_id: str, event_type: str,
@@ -1068,6 +1137,10 @@ class PhysicsPlusApp:
         return Response(200, {"ok": True, "signed_out": True}, {"Set-Cookie": self._clear_cookie()})
 
     def _dispatch(self, conn: sqlite3.Connection, method: str, path: str, query: dict, data: dict, user: sqlite3.Row) -> Response:
+        if method == "GET" and path == "/api/payment-account":
+            if user["role"] not in {"student", "admin"}:
+                fail(403, "forbidden", "Payment details are unavailable for this account")
+            return Response(200, {"payment_account": self._payment_account(conn)})
         if method == "GET" and path == "/api/courses":
             rows = conn.execute("SELECT c.id,c.course_code,c.subject_code,c.title,c.subject,c.level,c.price_satang,c.capacity,u.name teacher_name,u.public_code teacher_code,(SELECT COUNT(*) FROM enrollments e WHERE e.course_id=c.id AND e.status='active') enrolled_count FROM courses c LEFT JOIN users u ON u.id=c.teacher_id WHERE c.active=1 ORDER BY c.created_at DESC").fetchall()
             return Response(200, {"courses": [dict(row) for row in rows]})
@@ -1118,8 +1191,17 @@ class PhysicsPlusApp:
         self._require_role(user, "admin")
         if method == "GET" and path == "/api/admin/dashboard":
             return self._admin_dashboard(conn)
+        if method == "GET" and path == "/api/admin/payment-alerts":
+            return self._admin_payment_alerts(conn)
         if method == "GET" and path == "/api/admin/notification-status":
             return Response(200, self._notification_status(conn))
+        if method == "GET" and path == "/api/admin/sheet-sync/status":
+            return Response(200, self._sheet_sync_status(conn))
+        if method == "POST" and path == "/api/admin/sheet-sync/retry":
+            self._queue_all_sheet_datasets(conn)
+            return Response(200, {"queued": True, **self._sheet_sync_status(conn)})
+        if method == "PUT" and path == "/api/admin/payment-account":
+            return self._update_payment_account(conn, user, data)
         if method == "GET" and path == "/api/admin/users":
             return Response(200, {"users": self._admin_users(conn)})
         if method == "GET" and path == "/api/admin/academic":
@@ -1577,6 +1659,24 @@ class PhysicsPlusApp:
                        "roster_pending": is_pending_teacher(r)} for r in staff]
         return Response(200, {"pending_time_entries": [dict(r) for r in pending], **self._wage_liability(conn), "invoices": [dict(r) for r in invoices], "pending_payment_claims": [dict(r) for r in claims], "staff": staff_rows, "users": self._admin_users(conn), "notifications": self._notification_status(conn)})
 
+    @staticmethod
+    def _admin_payment_alerts(conn: sqlite3.Connection) -> Response:
+        """Small polling response for claims awaiting an administrator's review."""
+        pending_count = conn.execute(
+            "SELECT COUNT(*) FROM payment_claims WHERE status='pending'"
+        ).fetchone()[0]
+        claims = conn.execute(
+            "SELECT pc.id,pc.invoice_id,i.invoice_number,pc.amount_satang,"
+            "pc.reference,pc.status,pc.created_at,u.name student_name "
+            "FROM payment_claims pc "
+            "JOIN invoices i ON i.id=pc.invoice_id "
+            "JOIN users u ON u.id=pc.student_id "
+            "WHERE pc.status='pending' "
+            "ORDER BY pc.created_at DESC,pc.id DESC LIMIT 50"
+        ).fetchall()
+        return Response(200, {"pending_payment_claims": [dict(row) for row in claims],
+                              "pending_count": pending_count})
+
     def _notification_status(self, conn: sqlite3.Connection) -> dict:
         """Administrative delivery state without addresses or message content."""
         counts = {name: 0 for name in ("pending", "sending", "sent", "dead")}
@@ -1589,6 +1689,65 @@ class PhysicsPlusApp:
             "WHERE n.status='dead' ORDER BY n.created_at DESC,n.id DESC LIMIT 20"
         ).fetchall()
         return {"counts": counts, "failed": [dict(row) for row in failed]}
+
+    @staticmethod
+    def _payment_account(conn: sqlite3.Connection) -> dict:
+        row = conn.execute(
+            "SELECT bank_code,bank_name,account_name,account_number,updated_at "
+            "FROM payment_account WHERE id=1"
+        ).fetchone()
+        if row is None:
+            fail(503, "payment_account_unavailable", "Payment details are unavailable")
+        return dict(row)
+
+    def _update_payment_account(self, conn: sqlite3.Connection, actor: sqlite3.Row, data: dict) -> Response:
+        expected = {"bank_code", "bank_name", "account_name", "account_number"}
+        if set(data) != expected:
+            fail(400, "invalid_input", "Complete all payment account fields")
+        code = required_str(data, "bank_code", 20).lower()
+        name = required_str(data, "bank_name", 100)
+        holder = required_str(data, "account_name", 120)
+        number = required_str(data, "account_number", 30)
+        if not re.fullmatch(r"[a-z0-9]{2,20}", code) or not re.fullmatch(r"[0-9-]{8,30}", number) or not 8 <= len(number.replace("-", "")) <= 20:
+            fail(400, "invalid_payment_account", "Check the bank code and account number")
+        if any(ord(char) < 32 or ord(char) == 127 for char in name + holder):
+            fail(400, "invalid_payment_account", "Control characters are not allowed")
+        conn.execute(
+            "UPDATE payment_account SET bank_code=?,bank_name=?,account_name=?,"
+            "account_number=?,updated_by=?,updated_at=? WHERE id=1",
+            (code, name, holder, number, actor["id"], now()),
+        )
+        self.audit(conn, actor["id"], "payment_account", "primary", "update")
+        return Response(200, {"payment_account": self._payment_account(conn)})
+
+    @staticmethod
+    def _queue_all_sheet_datasets(conn: sqlite3.Connection) -> None:
+        current = now()
+        conn.executemany(
+            "INSERT INTO sheet_sync_state(dataset,revision,updated_at,next_attempt_at) "
+            "VALUES(?,1,?,0) ON CONFLICT(dataset) DO UPDATE SET "
+            "revision=revision+1,updated_at=excluded.updated_at,next_attempt_at=0",
+            [(dataset, current) for dataset in SHEET_DATASETS],
+        )
+
+    def _sheet_sync_status(self, conn: sqlite3.Connection) -> dict:
+        from sheets_sync import sheet_configured, sheet_url
+
+        row = conn.execute(
+            "SELECT SUM(CASE WHEN revision>synced_revision THEN 1 ELSE 0 END) pending,"
+            "MAX(synced_at) last_success_at FROM sheet_sync_state"
+        ).fetchone()
+        error = conn.execute(
+            "SELECT last_error_code FROM sheet_sync_state WHERE last_error_code IS NOT NULL "
+            "ORDER BY updated_at DESC,dataset DESC LIMIT 1"
+        ).fetchone()
+        return {
+            "configured": sheet_configured(),
+            "sheet_url": sheet_url(),
+            "pending": int(row["pending"] or 0),
+            "last_success_at": iso(row["last_success_at"]),
+            "last_error_code": error["last_error_code"] if error else None,
+        }
 
     def _report(self, conn: sqlite3.Connection, dataset: str, query: dict) -> Response:
         """Admin-only, paginated data for explicit CSV export to Google Sheets."""
@@ -2157,6 +2316,11 @@ class PhysicsPlusApp:
         invoice = conn.execute("SELECT * FROM invoices WHERE id=? AND status!='void'", (invoice_id,)).fetchone()
         if not invoice:
             fail(404, "invoice_not_found", "Invoice is unavailable")
+        if claim_id is None and conn.execute(
+            "SELECT 1 FROM payment_claims WHERE invoice_id=? AND status='pending'",
+            (invoice_id,),
+        ).fetchone():
+            fail(409, "claim_pending", "Review the pending payment claim before recording a direct payment")
         paid = conn.execute("SELECT COALESCE(SUM(amount_satang),0) FROM payments WHERE invoice_id=?", (invoice_id,)).fetchone()[0]
         if conn.execute("SELECT 1 FROM payments WHERE reference=? COLLATE NOCASE", (reference,)).fetchone():
             fail(409, "duplicate_payment", "This payment reference was already recorded")
