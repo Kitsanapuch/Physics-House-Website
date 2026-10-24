@@ -1715,9 +1715,15 @@
 
   async function start() {
     document.body.classList.add('live-ready', 'loading-screen');
+    const bootstrap = document.getElementById('pp-auth-bootstrap');
+    let me = null;
+    if (bootstrap) {
+      try { me = JSON.parse(bootstrap.textContent); }
+      catch { /* Fall back to the authenticated API when markup is stale. */ }
+    }
     document.body.innerHTML = '<main class="live-loading"><img src="physics-plus-logo-yellow-black.jpg" alt="Physics Plus"><p>กำลังตรวจสอบบัญชี…</p></main>';
     try {
-      const me = await api('/api/me');
+      if (!me) me = await api('/api/me');
       if (!me.authenticated || !me.user) { location.replace('index.html'); return; }
       if (!roleNames[me.user.role]) throw new Error('บทบาทบัญชีไม่ถูกต้อง');
       state.me = me.user; state.csrf = me.csrf_token;

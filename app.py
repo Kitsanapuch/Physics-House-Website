@@ -234,9 +234,10 @@ def landing():
 
 @app.get("/<path:asset>")
 def public_asset(asset: str):
+    dashboard_auth = None
     if asset in {"admin", "teacher", "student"}:
         try:
-            access = _backend().static_access("/" + asset, request.headers.get("Cookie", ""))
+            access, dashboard_auth = _backend().static_auth("/" + asset, request.headers.get("Cookie", ""))
         except (DatabaseError, ProtocolError, RuntimeError, ValueError):
             return _error(503, "service_unavailable", "The service is temporarily unavailable")
         if access == "login":
@@ -244,15 +245,22 @@ def public_asset(asset: str):
         if access == "forbidden":
             return _error(403, "forbidden", "This page is not available for your account")
         asset = "dashboard.html"
-    if asset == "dashboard.html":
+    if asset == "dashboard.html" and dashboard_auth is None:
         try:
-            access = _backend().static_access("/dashboard.html", request.headers.get("Cookie", ""))
+            access, dashboard_auth = _backend().static_auth("/dashboard.html", request.headers.get("Cookie", ""))
         except (DatabaseError, ProtocolError, RuntimeError, ValueError):
             return _error(503, "service_unavailable", "The service is temporarily unavailable")
         if access == "login":
             return redirect("/", code=303)
     if asset == "dashboard.html":
-        response = make_response(send_from_directory(PRIVATE_DIR, asset))
+        if dashboard_auth is None:
+            return _error(403, "forbidden", "This page is not available for your account")
+        bootstrap = json.dumps(dashboard_auth, ensure_ascii=True, separators=(",", ":"))
+        # Keep user-controlled names and emails inside the inert JSON script.
+        bootstrap = bootstrap.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+        page = (PRIVATE_DIR / asset).read_text(encoding="utf-8")
+        response = make_response(page.replace("__PP_AUTH_BOOTSTRAP__", bootstrap), 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"

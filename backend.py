@@ -1091,18 +1091,22 @@ class PhysicsPlusApp:
         if host not in {urlsplit(x).netloc for x in self.allowed_origins}:
             fail(400, "invalid_host", "Host is not allowed")
 
-    def static_access(self, route: str, cookie_header: str) -> str | None:
-        """Return login/forbidden for protected HTML paths, otherwise None."""
+    def static_auth(self, route: str, cookie_header: str) -> tuple[str | None, dict | None]:
+        """Authorize protected HTML and return the same session payload as /api/me."""
         if route not in {"/dashboard.html", "/student", "/teacher", "/admin"}:
-            return None
+            return None, None
         with self.connect() as conn:
-            _, user, _ = self._session(conn, cookie_header)
+            session, user, _ = self._session(conn, cookie_header)
             if user is None:
-                return "login"
+                return "login", None
             role_route = {"/student": "student", "/teacher": "teacher", "/admin": "admin"}.get(route)
             if role_route and user["role"] != role_route:
-                return "forbidden"
-        return None
+                return "forbidden", None
+            return None, self._auth_payload(user, session["csrf_token"])
+
+    def static_access(self, route: str, cookie_header: str) -> str | None:
+        """Return login/forbidden for protected HTML paths, otherwise None."""
+        return self.static_auth(route, cookie_header)[0]
 
     def handle(self, method: str, target: str, data: dict | None, headers: dict[str, str], client_ip: str) -> Response:
         try:

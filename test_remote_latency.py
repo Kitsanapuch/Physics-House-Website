@@ -154,6 +154,16 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         self.assertIn("users", full.body)
         self.assertIn("staff", full.body)
 
+    def test_protected_page_bootstrap_uses_existing_session_permissions(self) -> None:
+        self.assertEqual(self.owner.static_auth("/dashboard.html", ""), ("login", None))
+        login = self._login(password="SafeTestPassword123!")
+        cookie = login.headers["Set-Cookie"].split(";", 1)[0]
+        access, payload = self.owner.static_auth("/dashboard.html", cookie)
+        self.assertIsNone(access)
+        self.assertEqual(payload["user"]["role"], "admin")
+        self.assertEqual(payload["csrf_token"], login.body["csrf_token"])
+        self.assertEqual(self.owner.static_auth("/student", cookie), ("forbidden", None))
+
 
 if __name__ == "__main__":
     unittest.main()
