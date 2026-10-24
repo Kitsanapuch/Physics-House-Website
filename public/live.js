@@ -543,7 +543,6 @@
       const overviewRequest = quickOverview && !overviewCounts
         ? api('/api/admin/overview').then((value) => ({ value }), (error) => ({ error }))
         : null;
-      fetchSheetSyncStatus();
       if (quickOverview) {
         const first = overviewCounts
           ? { kind: 'overview', result: { value: overviewCounts } }
@@ -577,6 +576,7 @@
       if (quickOverview) setAdminDetailsBusy(false);
     }
     renderWorkspace();
+    if (role === 'admin') fetchSheetSyncStatus();
   }
 
   function renderStudent() {

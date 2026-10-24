@@ -1782,7 +1782,10 @@ class PhysicsPlusApp:
 
     def _admin_dashboard(self, conn: sqlite3.Connection, *, compact: bool = False) -> Response:
         pending = conn.execute("SELECT t.id,t.actual_start,t.actual_end,t.break_minutes,u.name teacher_name,c.title course_title,c.subject,c.level,s.id session_id,(SELECT COUNT(*) FROM attendance a WHERE a.session_id=s.id AND a.status='present') student_count FROM time_entries t JOIN users u ON u.id=t.teacher_id JOIN class_sessions s ON s.id=t.session_id JOIN courses c ON c.id=s.course_id WHERE t.status='submitted' ORDER BY t.submitted_at DESC").fetchall()
-        invoices = conn.execute("SELECT i.id,i.invoice_number,i.amount_satang,i.status,i.due_date,u.name student_name,COALESCE((SELECT SUM(p.amount_satang) FROM payments p WHERE p.invoice_id=i.id),0) paid_satang FROM invoices i JOIN users u ON u.id=i.student_id ORDER BY i.created_at DESC LIMIT 100").fetchall()
+        # The admin workspace loads the authoritative 500-row invoice list
+        # from /api/admin/invoices. Keep the original 100-row result for the
+        # full API, but avoid its duplicate remote read in compact mode.
+        invoices = [] if compact else conn.execute("SELECT i.id,i.invoice_number,i.amount_satang,i.status,i.due_date,u.name student_name,COALESCE((SELECT SUM(p.amount_satang) FROM payments p WHERE p.invoice_id=i.id),0) paid_satang FROM invoices i JOIN users u ON u.id=i.student_id ORDER BY i.created_at DESC LIMIT 100").fetchall()
         claims = conn.execute("SELECT pc.id,pc.invoice_id,pc.amount_satang,pc.reference,pc.status,u.name student_name FROM payment_claims pc JOIN users u ON u.id=pc.student_id WHERE pc.status='pending' ORDER BY pc.created_at DESC").fetchall()
         shared = {"pending_time_entries": [dict(r) for r in pending], "invoices": [dict(r) for r in invoices],
                   "pending_payment_claims": [dict(r) for r in claims], "notifications": self._notification_status(conn)}

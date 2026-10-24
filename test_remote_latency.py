@@ -143,12 +143,17 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         login = self._login(password="SafeTestPassword123!")
         cookie = login.headers["Set-Cookie"].split(";", 1)[0]
         headers = {"host": "school.example", "cookie": cookie}
+        self.statements.clear()
         compact = self.owner.handle("GET", "/api/admin/dashboard?compact=1", None, headers, "192.0.2.1")
+        compact_statements = list(self.statements)
         full = self.owner.handle("GET", "/api/admin/dashboard", None, headers, "192.0.2.1")
         self.assertEqual(compact.status, 200)
         self.assertEqual(full.status, 200)
-        for key in ("pending_time_entries", "invoices", "pending_payment_claims", "notifications"):
+        for key in ("pending_time_entries", "pending_payment_claims", "notifications"):
             self.assertEqual(compact.body[key], full.body[key])
+        self.assertEqual(compact.body["invoices"], [])
+        self.assertFalse(any("FROM INVOICES I JOIN USERS U" in statement.upper()
+                             for statement in compact_statements))
         self.assertNotIn("users", compact.body)
         self.assertNotIn("staff", compact.body)
         self.assertIn("users", full.body)
