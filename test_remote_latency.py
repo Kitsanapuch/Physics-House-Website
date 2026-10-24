@@ -9,6 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,7 +29,7 @@ except ModuleNotFoundError:
     sys.modules["turso_serverless"] = transport_stub
 
 import remote
-from backend import STUDENT_CODE_MIGRATION, now, uid
+from backend import ApiError, STUDENT_CODE_MIGRATION, now, uid
 
 
 class RemoteLoginLatencyTests(unittest.TestCase):
@@ -104,6 +105,54 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         self.assertEqual(self._login(ip="192.0.2.2").status, 429)
         self.assertEqual(self._attempts("ip:192.0.2.2"), 1)
         self.assertEqual(self._attempts("login:physicsplus"), 10)
+
+    def test_malformed_identifier_counts_only_the_ip_attempt(self) -> None:
+        malformed_email = self._login(login="a@", ip="192.0.2.30")
+        malformed_username = self._login(login="!bad", ip="192.0.2.30")
+        self.assertEqual(malformed_email.status, 400)
+        self.assertEqual(malformed_username.status, 400)
+        self.assertEqual(self._attempts("ip:192.0.2.30"), 2)
+        self.assertEqual(self._attempts("login:a@"), 0)
+        self.assertEqual(self._attempts("login:!bad"), 0)
+
+    def test_throttle_window_resets_at_exact_expiry(self) -> None:
+        key = "login:window@example.com"
+        with patch.object(remote, "now", return_value=1000):
+            self.owner.limiter.check(key, 2, 10)
+            self.owner.limiter.check(key, 2, 10)
+        with patch.object(remote, "now", return_value=1009):
+            with self.assertRaises(ApiError) as blocked:
+                self.owner.limiter.check(key, 2, 10)
+        self.assertEqual(blocked.exception.status, 429)
+        self.assertEqual(self._attempts(key), 2)
+        with patch.object(remote, "now", return_value=1010):
+            self.owner.limiter.check(key, 2, 10)
+        self.assertEqual(self._attempts(key), 1)
+
+    def test_throttle_count_survives_later_transaction_rollback(self) -> None:
+        key = "login:durable@example.com"
+        with self.assertRaises(RuntimeError):
+            with self.owner.connect() as conn:
+                self.owner.limiter.check(key, 2, 900, conn=conn)
+                conn.execute("BEGIN IMMEDIATE")
+                raise RuntimeError("authentication failed after throttle check")
+        self.assertEqual(self._attempts(key), 1)
+
+    def test_parallel_attempts_cannot_exceed_shared_limit(self) -> None:
+        key = "login:parallel@example.com"
+
+        def attempt(_index: int) -> int:
+            try:
+                self.owner.limiter.check(key, 10, 900)
+                return 200
+            except ApiError as exc:
+                return exc.status
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            statuses = list(pool.map(attempt, range(12)))
+        self.assertEqual(statuses.count(200), 10)
+        self.assertEqual(statuses.count(429), 2)
+        self.assertEqual(self._attempts(key), 10)
 
     def test_cold_worker_uses_read_only_schema_checks(self) -> None:
         cold = self._owner()

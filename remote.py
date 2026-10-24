@@ -10,7 +10,6 @@ import hashlib
 import hmac
 import sqlite3
 import threading
-from time import perf_counter
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -185,33 +184,25 @@ class PersistentRateLimiter:
 
     @staticmethod
     def _check(conn, digest: str, current: int, limit: int, period: int) -> None:
-        # Each check commits independently. If the identifier check rejects a
-        # login, the earlier IP attempt must still count toward its limit.
-        conn.execute("BEGIN IMMEDIATE")
+        # Each key is one atomic write and commits independently. An identifier
+        # rejection must not undo the IP attempt that was counted first.
         # Periodic bounded cleanup keeps this table from growing forever.
         if current % 97 == 0:
             conn.execute("DELETE FROM login_throttle WHERE window_started < ?", (current - 24 * 3600,))
-        row = conn.execute(
-            "SELECT window_started,attempts FROM login_throttle WHERE key_hash=?",
-            (digest,),
+        cutoff = current - period
+        accepted = conn.execute(
+            "INSERT INTO login_throttle(key_hash,window_started,attempts) VALUES(?,?,1) "
+            "ON CONFLICT(key_hash) DO UPDATE SET "
+            "window_started=CASE WHEN login_throttle.window_started<=? "
+            "THEN excluded.window_started ELSE login_throttle.window_started END, "
+            "attempts=CASE WHEN login_throttle.window_started<=? "
+            "THEN 1 ELSE login_throttle.attempts+1 END "
+            "WHERE login_throttle.window_started<=? OR login_throttle.attempts<? "
+            "RETURNING attempts",
+            (digest, current, cutoff, cutoff, cutoff, limit),
         ).fetchone()
-        if row is None:
-            conn.execute(
-                "INSERT INTO login_throttle(key_hash,window_started,attempts) VALUES(?,?,1)",
-                (digest, current),
-            )
-        elif row["window_started"] <= current - period:
-            conn.execute(
-                "UPDATE login_throttle SET window_started=?, attempts=1 WHERE key_hash=?",
-                (current, digest),
-            )
-        elif row["attempts"] >= limit:
+        if accepted is None:
             fail(429, "rate_limited", "Too many attempts; try again later")
-        else:
-            conn.execute(
-                "UPDATE login_throttle SET attempts=attempts+1 WHERE key_hash=?",
-                (digest,),
-            )
         conn.commit()
 
 
@@ -467,20 +458,11 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
 
     def handle(self, method: str, target: str, data: dict | None, headers: dict[str, str], client_ip: str) -> Response:
         try:
-            started = perf_counter()
             result = super().handle(method, target, data, headers, client_ip)
             if method == "GET" and target.split("?", 1)[0] == "/api/health" and result.status == 200:
-                before_connect = perf_counter()
                 with self.connect() as conn:
-                    after_connect = perf_counter()
                     conn.execute("SELECT 1").fetchone()
-                    after_ping = perf_counter()
-                timing = (
-                    f"route;dur={(before_connect - started) * 1000:.1f},"
-                    f"connect;dur={(after_connect - before_connect) * 1000:.1f},"
-                    f"ping;dur={(after_ping - after_connect) * 1000:.1f}"
-                )
-                return Response(200, {"ok": True, "database": "turso"}, {"Server-Timing": timing})
+                return Response(200, {"ok": True, "database": "turso"})
             return result
         except turso_serverless.IntegrityError:
             return Response(409, {"error": {"code": "conflict", "message": "The requested change conflicts with existing data"}})
