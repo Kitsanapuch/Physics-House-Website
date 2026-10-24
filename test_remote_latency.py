@@ -159,33 +159,6 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         self.assertIn("users", full.body)
         self.assertIn("staff", full.body)
 
-    def test_admin_bootstrap_preserves_existing_views_with_one_connection(self) -> None:
-        login = self._login(password="SafeTestPassword123!")
-        cookie = login.headers["Set-Cookie"].split(";", 1)[0]
-        headers = {"host": "school.example", "cookie": cookie}
-        before = self.connections
-        bundled = self.owner.handle("GET", "/api/admin/bootstrap", None, headers, "192.0.2.1")
-        self.assertEqual(bundled.status, 200, bundled.body)
-        self.assertEqual(self.connections - before, 1)
-        paths = {
-            "dashboard": "/api/admin/dashboard?compact=1",
-            "rates": "/api/admin/rates",
-            "payroll": "/api/admin/payroll-runs",
-            "tuition": "/api/admin/invoices",
-            "academic": "/api/admin/academic",
-            "payment_account": "/api/payment-account",
-        }
-        for name, path in paths.items():
-            with self.subTest(name=name):
-                separate = self.owner.handle("GET", path, None, headers, "192.0.2.1")
-                self.assertEqual(bundled.body[name], separate.body)
-        small = self.owner.handle("GET", "/api/admin/bootstrap?group=small", None,
-                                  headers, "192.0.2.1")
-        self.assertEqual(small.status, 200)
-        self.assertEqual(set(small.body), {"rates", "payroll", "payment_account"})
-        for name in small.body:
-            self.assertEqual(small.body[name], bundled.body[name])
-
     def test_protected_page_bootstrap_uses_existing_session_permissions(self) -> None:
         self.assertEqual(self.owner.static_auth("/dashboard.html", ""), ("login", None))
         login = self._login(password="SafeTestPassword123!")

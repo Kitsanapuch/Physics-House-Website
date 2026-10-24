@@ -1294,23 +1294,6 @@ class PhysicsPlusApp:
             self._require_role(user, attendance_match.group(1))
             return self._set_attendance(conn, user, attendance_match.group(2), data)
         self._require_role(user, "admin")
-        if method == "GET" and path == "/api/admin/bootstrap":
-            # Keep the existing endpoint response shapes while sharing the
-            # authenticated Turso connection for the initial workspace read.
-            paths = {
-                "dashboard": ("/api/admin/dashboard", {"compact": ["1"]}),
-                "rates": ("/api/admin/rates", {}),
-                "payroll": ("/api/admin/payroll-runs", {}),
-                "tuition": ("/api/admin/invoices", {}),
-                "academic": ("/api/admin/academic", {}),
-                "payment_account": ("/api/payment-account", {}),
-            }
-            if query.get("group") == ["small"]:
-                paths = {name: paths[name] for name in ("rates", "payroll", "payment_account")}
-            return Response(200, {
-                name: self._dispatch(conn, "GET", endpoint, params, {}, user).body
-                for name, (endpoint, params) in paths.items()
-            })
         if method == "GET" and path == "/api/admin/overview":
             return self._admin_overview(conn)
         if method == "GET" and path == "/api/admin/dashboard":

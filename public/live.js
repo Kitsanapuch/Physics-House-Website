@@ -497,6 +497,18 @@
       renderSheetSyncStatus();
       updateAdminPaymentAlert(state.data.pending_payment_claims || [], false,
         Number(state.data.overview_counts?.pending_claims ?? (state.data.pending_payment_claims || []).length));
+      if (state.loadingDetails) {
+        // The overview is already authenticated and useful. Let navigation
+        // respond now, while keeping unfinished forms and rows out of view.
+        for (const section of $('live-content').querySelectorAll(':scope > .new-section:not(#overview)')) {
+          const label = state.nav.find(([id]) => id === section.id)?.[1] || 'ข้อมูล';
+          const panel = section.classList.contains('panel') ? section : element('section', 'panel');
+          if (panel !== section) section.replaceChildren(panel);
+          else panel.replaceChildren();
+          panel.setAttribute('aria-busy', 'true');
+          panel.append(element('h2', '', label), element('p', 'muted', 'กำลังโหลดข้อมูลล่าสุด…'));
+        }
+      }
     }
     const target = state.viewTargetId || hashTarget() || 'overview';
     if (!showView(target, { historyMode: hadView ? 'none' : 'replace', scroll: !hadView })) showView('overview', { historyMode: 'replace', scroll: !hadView });
@@ -516,9 +528,6 @@
 
   function setAdminDetailsBusy(busy) {
     state.loadingDetails = busy;
-    for (const button of document.querySelectorAll('#side-nav button[data-target], #mobile-nav button[data-target]')) {
-      button.disabled = busy && button.dataset.target !== 'overview';
-    }
     const alertButton = $('payment-alert-button');
     if (alertButton) alertButton.disabled = busy;
   }
@@ -537,31 +546,11 @@
       state.classes = classes.classes || [];
     } else {
       const quickOverview = initial && (!hashTarget() || hashTarget() === 'overview');
-      const debugOptions = new URLSearchParams(location.search);
-      const measure = debugOptions.get('pp_perf') === '1';
-      const timedApi = (path) => {
-        const started = performance.now();
-        return api(path).finally(() => {
-          if (measure) console.info('PP-PERF', path, Math.round(performance.now() - started));
-        });
-      };
-      const bundled = debugOptions.get('pp_bundle') === '1'
-        ? timedApi('/api/admin/bootstrap') : null;
-      const smallBundle = debugOptions.get('pp_bundle') === 'small'
-        ? timedApi('/api/admin/bootstrap?group=small') : null;
-      const dashboardRequest = (bundled
-        ? bundled.then((value) => value.dashboard)
-        : timedApi('/api/admin/dashboard?compact=1'))
-        .then((value) => ({ value }), (error) => ({ error }));
-      const detailsRequest = (bundled
-        ? bundled.then((value) => [value.rates, value.payroll, value.tuition, value.academic, value.payment_account])
-        : smallBundle
-          ? Promise.all([smallBundle, timedApi('/api/admin/invoices'), timedApi('/api/admin/academic')])
-            .then(([value, tuition, academic]) => [value.rates, value.payroll, tuition, academic, value.payment_account])
-        : Promise.all([
-          timedApi('/api/admin/rates'), timedApi('/api/admin/payroll-runs'), timedApi('/api/admin/invoices'),
-          timedApi('/api/admin/academic'), timedApi('/api/payment-account')
-        ])).then((value) => ({ value }), (error) => ({ error }));
+      const dashboardRequest = api('/api/admin/dashboard?compact=1').then((value) => ({ value }), (error) => ({ error }));
+      const detailsRequest = Promise.all([
+        api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'),
+        api('/api/admin/academic'), api('/api/payment-account')
+      ]).then((value) => ({ value }), (error) => ({ error }));
       // The small first-screen read is optional: a failure or a slower reply
       // must never hold up the existing complete workspace.
       const overviewRequest = quickOverview && !overviewCounts
