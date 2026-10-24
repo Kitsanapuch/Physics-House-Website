@@ -783,7 +783,7 @@ class RateLimiter:
         self.events: dict[str, deque[int]] = defaultdict(deque)
         self.lock = threading.Lock()
 
-    def check(self, key: str, limit: int, period: int) -> None:
+    def check(self, key: str, limit: int, period: int, *, conn=None) -> None:
         current = now()
         with self.lock:
             queue = self.events[key]
@@ -1126,7 +1126,7 @@ class PhysicsPlusApp:
                     return Response(200, self._auth_payload(user, session["csrf_token"]) if user else {"authenticated": False})
 
                 if path in {"/api/auth/register", "/api/auth/login"} and method == "POST":
-                    self.limiter.check(f"ip:{client_ip}", 20, 15 * 60)
+                    self.limiter.check(f"ip:{client_ip}", 20, 15 * 60, conn=conn)
                     if path.endswith("register"):
                         identifier = normalize_email(required_str(data, "email", 254))
                     else:
@@ -1134,7 +1134,7 @@ class PhysicsPlusApp:
                         if not isinstance(raw_login, str) or not raw_login.strip():
                             fail(400, "invalid_input", "login is required")
                         identifier = normalize_email(raw_login) if "@" in raw_login else normalize_username(raw_login)
-                    self.limiter.check(f"login:{identifier}", 10, 15 * 60)
+                    self.limiter.check(f"login:{identifier}", 10, 15 * 60, conn=conn)
                     conn.execute("BEGIN IMMEDIATE")
                     response = self._register(conn, data, identifier) if path.endswith("register") else self._login(conn, data, identifier)
                     conn.commit()

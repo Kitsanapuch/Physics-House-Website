@@ -322,10 +322,10 @@
     const role = user.role;
     document.body.classList.remove('loading-screen');
     document.body.innerHTML = `
-      <aside class="sidebar" aria-label="เมนูหลัก"><div class="sidebrand"><img src="physics-plus-logo-yellow-black.png" alt=""><div><strong>Physics<br>Plus<span style="color:#ffda39">.</span></strong><small>LEARNING WORKSPACE</small></div></div><div class="nav-label">พื้นที่ของคุณ</div><nav class="side-nav" id="side-nav"></nav><div class="side-profile"><span class="profile-avatar" id="profile-avatar"></span><div><strong id="profile-name"></strong><small id="profile-role"></small></div></div></aside>
-      <header class="live-header"><div class="brand"><img class="mark" src="physics-plus-logo-yellow-black.png" alt="โลโก้ Physics Plus"><div>Physics Plus<div class="muted" id="header-role"></div></div></div><div class="header-actions"><button type="button" id="password-button">เปลี่ยนรหัสผ่าน</button><button type="button" id="logout-button">ออกจากระบบ</button></div></header>
+      <aside class="sidebar" aria-label="เมนูหลัก"><div class="sidebrand"><img src="physics-plus-logo-yellow-black.jpg" alt=""><div><strong>Physics<br>Plus<span style="color:#ffda39">.</span></strong><small>LEARNING WORKSPACE</small></div></div><div class="nav-label">พื้นที่ของคุณ</div><nav class="side-nav" id="side-nav"></nav><div class="side-profile"><span class="profile-avatar" id="profile-avatar"></span><div><strong id="profile-name"></strong><small id="profile-role"></small></div></div></aside>
+      <header class="live-header"><div class="brand"><img class="mark" src="physics-plus-logo-yellow-black.jpg" alt="โลโก้ Physics Plus"><div>Physics Plus<div class="muted" id="header-role"></div></div></div><div class="header-actions"><button type="button" id="password-button">เปลี่ยนรหัสผ่าน</button><button type="button" id="logout-button">ออกจากระบบ</button></div></header>
       <nav class="mobile-nav" id="mobile-nav" aria-label="ส่วนต่าง ๆ ของระบบ"></nav>
-      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading" aria-live="polite"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.png" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="student-live-cancellation" class="class-live-cancellation" role="alert" hidden></div><div id="live-content"></div></main>
+      <main><div class="intro"><div><div class="eyebrow">PHYSICS PLUS / LEARNING SPACE</div><h1 id="heading" aria-live="polite"></h1><p class="muted" id="subtitle"></p></div><span class="badge" id="hero-badge"></span><span class="math m1" aria-hidden="true">E = mc²</span><span class="math m2" aria-hidden="true">∫ x dx</span><span class="math m3" aria-hidden="true">F = ma</span><img class="hero-emblem" src="physics-plus-logo-yellow-black.jpg" alt="ภาพไอน์สไตน์บนโลโก้ Physics Plus"></div><p id="live-feedback" class="live-feedback" role="status" aria-live="polite" hidden></p><div id="student-live-cancellation" class="class-live-cancellation" role="alert" hidden></div><div id="live-content"></div></main>
       <dialog id="live-dialog" class="live-dialog"></dialog>`;
     $('profile-name').textContent = user.name;
     if (role === 'admin') {
@@ -447,6 +447,17 @@
     const link = $('sheet-sync-link');
     if (!statusBox || !link) return;
     const status = state.sheetSyncStatus;
+    if (!status) {
+      statusBox.textContent = 'กำลังตรวจสถานะ…';
+      link.hidden = true;
+      return;
+    }
+    if (status.request_failed) {
+      statusBox.textContent = 'ตรวจสถานะการซิงก์ไม่ได้ชั่วคราว กรุณาลองใหม่';
+      statusBox.classList.add('needs-setup');
+      link.hidden = true;
+      return;
+    }
     statusBox.classList.toggle('needs-setup', !status?.configured || Boolean(status?.last_error_code));
     statusBox.dataset.state = !status?.configured ? 'unconfigured' : (status.pending || status.last_error_code || !status.last_success_at ? 'pending' : 'ready');
     const lastSync = status?.last_success_at ? new Date(status.last_success_at) : null;
@@ -481,15 +492,22 @@
       state.data = { ...dashboard, ...payroll };
       state.classes = classes.classes || [];
     } else {
-      const [dashboard, rates, catalog, payroll, users, tuition, academic, paymentAccount, sheetSyncStatus] = await Promise.all([
-        api('/api/admin/dashboard'), api('/api/admin/rates'), api('/api/courses'), api('/api/admin/payroll-runs'), api('/api/admin/users'), api('/api/admin/invoices'), api('/api/admin/academic'), api('/api/payment-account'), api('/api/admin/sheet-sync/status')
+      const [dashboard, rates, payroll, tuition, academic, paymentAccount] = await Promise.all([
+        api('/api/admin/dashboard'), api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'), api('/api/admin/academic'), api('/api/payment-account')
       ]);
-      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || users.users || [], unbilled_enrollments: tuition.enrollments || [] };
-      state.courses = catalog.courses || [];
+      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || dashboard.users || [], unbilled_enrollments: tuition.enrollments || [] };
+      state.courses = (academic.courses || []).filter((course) => course.active);
       state.academic = academic;
       state.classes = academic.classes || [];
       state.paymentAccount = paymentAccount.payment_account || null;
-      state.sheetSyncStatus = sheetSyncStatus;
+      // Sheet status is informational and must not hold up the working area.
+      void api('/api/admin/sheet-sync/status').then((status) => {
+        state.sheetSyncStatus = status;
+        renderSheetSyncStatus();
+      }).catch(() => {
+        state.sheetSyncStatus = { request_failed: true };
+        renderSheetSyncStatus();
+      });
     }
     const hadView = Boolean(state.viewTargetId);
     const priorScrollY = window.scrollY;
@@ -1697,7 +1715,7 @@
 
   async function start() {
     document.body.classList.add('live-ready', 'loading-screen');
-    document.body.innerHTML = '<main class="live-loading"><img src="physics-plus-logo-yellow-black.png" alt="Physics Plus"><p>กำลังตรวจสอบบัญชี…</p></main>';
+    document.body.innerHTML = '<main class="live-loading"><img src="physics-plus-logo-yellow-black.jpg" alt="Physics Plus"><p>กำลังตรวจสอบบัญชี…</p></main>';
     try {
       const me = await api('/api/me');
       if (!me.authenticated || !me.user) { location.replace('index.html'); return; }
@@ -1708,6 +1726,7 @@
         $('live-content').append(element('section', 'panel', 'กรุณาเปลี่ยนรหัสผ่านชั่วคราวก่อนใช้งาน'));
         passwordDialog(true); return;
       }
+      $('live-content').append(element('section', 'panel', 'กำลังโหลดข้อมูลล่าสุด…'));
       await load();
       window.setTimeout(() => document.body.classList.add('dashboard-mounted'), 520);
     } catch (error) {

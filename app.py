@@ -261,6 +261,7 @@ def public_asset(asset: str):
     if asset not in {
         "index.html", "live.js", "live.css", "portal.css",
         "design.css", "physics-hero-gold.png", "physics-plus-logo-yellow-black.png",
+        "physics-hero-gold.jpg", "physics-plus-logo-yellow-black.jpg", "physics-plus-favicon.png",
     }:
         return _error(404, "not_found", "Page not found")
     response = make_response(send_from_directory(PUBLIC_DIR, asset))
