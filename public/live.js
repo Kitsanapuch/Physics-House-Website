@@ -122,16 +122,20 @@
   }
   let studentClassPollBusy = false;
   let lastStudentClassPoll = 0;
-  const thaiMoney = (satang) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(Number(satang || 0) / 100);
+  const moneyFormatter = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' });
+  const dateFormatter = new Intl.DateTimeFormat('th-TH', { timeZone: TZ, dateStyle: 'medium' });
+  const dateTimeFormatter = new Intl.DateTimeFormat('th-TH', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
+  const hoursFormatter = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
+  const thaiMoney = (satang) => moneyFormatter.format(Number(satang || 0) / 100);
   const thaiDate = (date) => {
     if (!date) return '—';
     const parsed = typeof date === 'number' ? new Date(date * 1000) : new Date(/^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date}T12:00:00+07:00` : date);
-    return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('th-TH', { timeZone: TZ, dateStyle: 'medium' }).format(parsed);
+    return Number.isNaN(parsed.getTime()) ? '—' : dateFormatter.format(parsed);
   };
   const thaiDateTime = (epoch) => {
     if (!epoch) return '—';
     const parsed = new Date(epoch * 1000);
-    return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('th-TH', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+    return Number.isNaN(parsed.getTime()) ? '—' : dateTimeFormatter.format(parsed);
   };
   const bangkokToday = () => {
     const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -139,7 +143,7 @@
     }).formatToParts(new Date()).map((part) => [part.type, part.value]));
     return `${parts.year}-${parts.month}-${parts.day}`;
   };
-  const hours = (minutes) => `${new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(Number(minutes || 0) / 60)} ชม.`;
+  const hours = (minutes) => `${hoursFormatter.format(Number(minutes || 0) / 60)} ชม.`;
   const status = (value) => statusNames[value] || value || '—';
   const validId = (value) => {
     if (!/^[0-9a-f]{32}$/.test(String(value))) throw new Error('รหัสรายการไม่ถูกต้อง');
@@ -533,11 +537,26 @@
       state.classes = classes.classes || [];
     } else {
       const quickOverview = initial && (!hashTarget() || hashTarget() === 'overview');
-      const dashboardRequest = api('/api/admin/dashboard?compact=1').then((value) => ({ value }), (error) => ({ error }));
-      const detailsRequest = Promise.all([
-        api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'),
-        api('/api/admin/academic'), api('/api/payment-account')
-      ]).then((value) => ({ value }), (error) => ({ error }));
+      const debugOptions = new URLSearchParams(location.search);
+      const measure = debugOptions.get('pp_perf') === '1';
+      const timedApi = (path) => {
+        const started = performance.now();
+        return api(path).finally(() => {
+          if (measure) console.info('PP-PERF', path, Math.round(performance.now() - started));
+        });
+      };
+      const bundled = debugOptions.get('pp_bundle') === '1'
+        ? timedApi('/api/admin/bootstrap') : null;
+      const dashboardRequest = (bundled
+        ? bundled.then((value) => value.dashboard)
+        : timedApi('/api/admin/dashboard?compact=1'))
+        .then((value) => ({ value }), (error) => ({ error }));
+      const detailsRequest = (bundled
+        ? bundled.then((value) => [value.rates, value.payroll, value.tuition, value.academic, value.payment_account])
+        : Promise.all([
+          timedApi('/api/admin/rates'), timedApi('/api/admin/payroll-runs'), timedApi('/api/admin/invoices'),
+          timedApi('/api/admin/academic'), timedApi('/api/payment-account')
+        ])).then((value) => ({ value }), (error) => ({ error }));
       // The small first-screen read is optional: a failure or a slower reply
       // must never hold up the existing complete workspace.
       const overviewRequest = quickOverview && !overviewCounts

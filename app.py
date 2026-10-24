@@ -18,7 +18,6 @@ from turso_serverless.protocol import ProtocolError
 from backend import MAX_BODY, Response, SHEET_DATASETS
 from mailer import delivery_configured, send_update_email
 from remote import RemotePhysicsPlusApp
-from receipt_pdf import render_receipt_pdf
 from sheets_sync import dispatch as dispatch_sheet_sync, sheet_configured
 
 
@@ -163,6 +162,9 @@ def receipt_download(receipt_id: str):
         return _json_response(result)
     receipt = result.body["receipt"]
     try:
+        # ReportLab is only needed for receipt downloads; keeping it out of
+        # the common import path shortens cold login/dashboard invocations.
+        from receipt_pdf import render_receipt_pdf
         document = render_receipt_pdf(receipt)
     except (OSError, RuntimeError, ValueError):
         return _error(503, "receipt_unavailable", "The receipt is temporarily unavailable")
