@@ -1283,7 +1283,7 @@ class PhysicsPlusApp:
             return self._set_attendance(conn, user, attendance_match.group(2), data)
         self._require_role(user, "admin")
         if method == "GET" and path == "/api/admin/dashboard":
-            return self._admin_dashboard(conn)
+            return self._admin_dashboard(conn, compact=query.get("compact") == ["1"])
         if method == "GET" and path == "/api/admin/payment-alerts":
             return self._admin_payment_alerts(conn)
         if method == "GET" and path == "/api/admin/notification-status":
@@ -1743,14 +1743,22 @@ class PhysicsPlusApp:
                               "classes": self._class_list(conn),
                               "enrollments": [dict(row) for row in enrollments]})
 
-    def _admin_dashboard(self, conn: sqlite3.Connection) -> Response:
+    def _admin_dashboard(self, conn: sqlite3.Connection, *, compact: bool = False) -> Response:
         pending = conn.execute("SELECT t.id,t.actual_start,t.actual_end,t.break_minutes,u.name teacher_name,c.title course_title,c.subject,c.level,s.id session_id,(SELECT COUNT(*) FROM attendance a WHERE a.session_id=s.id AND a.status='present') student_count FROM time_entries t JOIN users u ON u.id=t.teacher_id JOIN class_sessions s ON s.id=t.session_id JOIN courses c ON c.id=s.course_id WHERE t.status='submitted' ORDER BY t.submitted_at DESC").fetchall()
         invoices = conn.execute("SELECT i.id,i.invoice_number,i.amount_satang,i.status,i.due_date,u.name student_name,COALESCE((SELECT SUM(p.amount_satang) FROM payments p WHERE p.invoice_id=i.id),0) paid_satang FROM invoices i JOIN users u ON u.id=i.student_id ORDER BY i.created_at DESC LIMIT 100").fetchall()
         claims = conn.execute("SELECT pc.id,pc.invoice_id,pc.amount_satang,pc.reference,pc.status,u.name student_name FROM payment_claims pc JOIN users u ON u.id=pc.student_id WHERE pc.status='pending' ORDER BY pc.created_at DESC").fetchall()
+        shared = {"pending_time_entries": [dict(r) for r in pending], "invoices": [dict(r) for r in invoices],
+                  "pending_payment_claims": [dict(r) for r in claims], "notifications": self._notification_status(conn)}
+        if compact:
+            # The admin workspace already reads its staff directory and wage
+            # data from the academic/payroll endpoints. Avoid duplicate Turso
+            # queries on the critical first paint without changing the full API.
+            return Response(200, shared)
         staff = conn.execute("SELECT id,email,name,role,status,must_change_password FROM users WHERE role IN ('teacher','admin') ORDER BY role,name").fetchall()
         staff_rows = [{**dict(r), "email": public_email(r), "login_enabled": r["status"] == "active",
                        "roster_pending": is_pending_teacher(r)} for r in staff]
-        return Response(200, {"pending_time_entries": [dict(r) for r in pending], **self._wage_liability(conn), "invoices": [dict(r) for r in invoices], "pending_payment_claims": [dict(r) for r in claims], "staff": staff_rows, "users": self._admin_users(conn), "notifications": self._notification_status(conn)})
+        return Response(200, {**shared, **self._wage_liability(conn), "staff": staff_rows,
+                              "users": self._admin_users(conn)})
 
     @staticmethod
     def _admin_payment_alerts(conn: sqlite3.Connection) -> Response:

@@ -493,9 +493,9 @@
       state.classes = classes.classes || [];
     } else {
       const [dashboard, rates, payroll, tuition, academic, paymentAccount] = await Promise.all([
-        api('/api/admin/dashboard'), api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'), api('/api/admin/academic'), api('/api/payment-account')
+        api('/api/admin/dashboard?compact=1'), api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'), api('/api/admin/academic'), api('/api/payment-account')
       ]);
-      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || dashboard.users || [], unbilled_enrollments: tuition.enrollments || [] };
+      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || [], staff: (academic.users || []).filter((person) => person.role === 'teacher' || person.role === 'admin'), unbilled_enrollments: tuition.enrollments || [] };
       state.courses = (academic.courses || []).filter((course) => course.active);
       state.academic = academic;
       state.classes = academic.classes || [];

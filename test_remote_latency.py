@@ -139,6 +139,21 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         self.assertRegex(code, r"^[0-9]{5}$")
         self.assertIsNotNone(marker)
 
+    def test_compact_admin_dashboard_keeps_shared_data_and_full_api(self) -> None:
+        login = self._login(password="SafeTestPassword123!")
+        cookie = login.headers["Set-Cookie"].split(";", 1)[0]
+        headers = {"host": "school.example", "cookie": cookie}
+        compact = self.owner.handle("GET", "/api/admin/dashboard?compact=1", None, headers, "192.0.2.1")
+        full = self.owner.handle("GET", "/api/admin/dashboard", None, headers, "192.0.2.1")
+        self.assertEqual(compact.status, 200)
+        self.assertEqual(full.status, 200)
+        for key in ("pending_time_entries", "invoices", "pending_payment_claims", "notifications"):
+            self.assertEqual(compact.body[key], full.body[key])
+        self.assertNotIn("users", compact.body)
+        self.assertNotIn("staff", compact.body)
+        self.assertIn("users", full.body)
+        self.assertIn("staff", full.body)
+
 
 if __name__ == "__main__":
     unittest.main()
