@@ -237,7 +237,9 @@ def public_asset(asset: str):
     dashboard_auth = None
     if asset in {"admin", "teacher", "student"}:
         try:
-            access, dashboard_auth = _backend().static_auth("/" + asset, request.headers.get("Cookie", ""))
+            access, dashboard_auth = _backend().static_auth(
+                "/" + asset, request.headers.get("Cookie", ""), include_overview=True
+            )
         except (DatabaseError, ProtocolError, RuntimeError, ValueError):
             return _error(503, "service_unavailable", "The service is temporarily unavailable")
         if access == "login":
@@ -247,7 +249,9 @@ def public_asset(asset: str):
         asset = "dashboard.html"
     if asset == "dashboard.html" and dashboard_auth is None:
         try:
-            access, dashboard_auth = _backend().static_auth("/dashboard.html", request.headers.get("Cookie", ""))
+            access, dashboard_auth = _backend().static_auth(
+                "/dashboard.html", request.headers.get("Cookie", ""), include_overview=True
+            )
         except (DatabaseError, ProtocolError, RuntimeError, ValueError):
             return _error(503, "service_unavailable", "The service is temporarily unavailable")
         if access == "login":

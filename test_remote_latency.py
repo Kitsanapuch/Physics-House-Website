@@ -164,6 +164,23 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         self.assertEqual(payload["csrf_token"], login.body["csrf_token"])
         self.assertEqual(self.owner.static_auth("/student", cookie), ("forbidden", None))
 
+        self.statements.clear()
+        access, bootstrapped = self.owner.static_auth(
+            "/dashboard.html", cookie, include_overview=True
+        )
+        self.assertIsNone(access)
+        self.assertEqual(bootstrapped["overview_counts"]["pending_claims"], 0)
+        self.assertEqual(bootstrapped["user"], payload["user"])
+        self.assertFalse(any(statement.strip().upper().startswith(("INSERT ", "UPDATE ", "DELETE "))
+                             for statement in self.statements), self.statements)
+        with patch.object(self.owner, "_admin_overview", side_effect=RuntimeError("temporary reporting failure")):
+            access, fallback = self.owner.static_auth(
+                "/dashboard.html", cookie, include_overview=True
+            )
+        self.assertIsNone(access)
+        self.assertEqual(fallback["user"], payload["user"])
+        self.assertNotIn("overview_counts", fallback)
+
     def test_fast_admin_overview_reports_current_counts(self) -> None:
         login = self._login(password="SafeTestPassword123!")
         cookie = login.headers["Set-Cookie"].split(";", 1)[0]

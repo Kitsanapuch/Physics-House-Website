@@ -1091,8 +1091,8 @@ class PhysicsPlusApp:
         if host not in {urlsplit(x).netloc for x in self.allowed_origins}:
             fail(400, "invalid_host", "Host is not allowed")
 
-    def static_auth(self, route: str, cookie_header: str) -> tuple[str | None, dict | None]:
-        """Authorize protected HTML and return the same session payload as /api/me."""
+    def static_auth(self, route: str, cookie_header: str, *, include_overview: bool = False) -> tuple[str | None, dict | None]:
+        """Authorize protected HTML and optionally reuse that read for admin counts."""
         if route not in {"/dashboard.html", "/student", "/teacher", "/admin"}:
             return None, None
         with self.connect() as conn:
@@ -1102,7 +1102,15 @@ class PhysicsPlusApp:
             role_route = {"/student": "student", "/teacher": "teacher", "/admin": "admin"}.get(route)
             if role_route and user["role"] != role_route:
                 return "forbidden", None
-            return None, self._auth_payload(user, session["csrf_token"])
+            payload = self._auth_payload(user, session["csrf_token"])
+            if include_overview and user["role"] == "admin" and not user["must_change_password"]:
+                try:
+                    payload["overview_counts"] = self._admin_overview(conn).body
+                except Exception:
+                    # Counts are optional; a transient reporting read must
+                    # never prevent a valid user from opening the workspace.
+                    pass
+            return None, payload
 
     def static_access(self, route: str, cookie_header: str) -> str | None:
         """Return login/forbidden for protected HTML paths, otherwise None."""

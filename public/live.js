@@ -519,7 +519,7 @@
     if (alertButton) alertButton.disabled = busy;
   }
 
-  async function load({ initial = false } = {}) {
+  async function load({ initial = false, overviewCounts = null } = {}) {
     const role = state.me.role;
     if (role === 'student') {
       const [dashboard, catalog, classes, paymentAccount] = await Promise.all([api('/api/student/dashboard'), api('/api/courses'), api('/api/student/classes'), api('/api/payment-account')]);
@@ -540,15 +540,17 @@
       ]).then((value) => ({ value }), (error) => ({ error }));
       // The small first-screen read is optional: a failure or a slower reply
       // must never hold up the existing complete workspace.
-      const overviewRequest = quickOverview
+      const overviewRequest = quickOverview && !overviewCounts
         ? api('/api/admin/overview').then((value) => ({ value }), (error) => ({ error }))
         : null;
       fetchSheetSyncStatus();
       if (quickOverview) {
-        const first = await Promise.race([
-          overviewRequest.then((result) => ({ kind: 'overview', result })),
-          Promise.all([dashboardRequest, detailsRequest]).then(() => ({ kind: 'full' }))
-        ]);
+        const first = overviewCounts
+          ? { kind: 'overview', result: { value: overviewCounts } }
+          : await Promise.race([
+            overviewRequest.then((result) => ({ kind: 'overview', result })),
+            Promise.all([dashboardRequest, detailsRequest]).then(() => ({ kind: 'full' }))
+          ]);
         if (first.kind === 'overview' && !first.result.error) {
           state.data = { overview_counts: first.result.value, invoices: [], users: [], staff: [] };
           state.courses = [];
@@ -1789,7 +1791,7 @@
         passwordDialog(true); return;
       }
       $('live-content').append(element('section', 'panel', 'กำลังโหลดข้อมูลล่าสุด…'));
-      await load({ initial: true });
+      await load({ initial: true, overviewCounts: me.overview_counts || null });
       window.setTimeout(() => document.body.classList.add('dashboard-mounted'), 520);
     } catch (error) {
       document.body.innerHTML = '';
