@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import sqlite3
 import threading
+from time import perf_counter
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -466,11 +467,20 @@ class RemotePhysicsPlusApp(PhysicsPlusApp):
 
     def handle(self, method: str, target: str, data: dict | None, headers: dict[str, str], client_ip: str) -> Response:
         try:
+            started = perf_counter()
             result = super().handle(method, target, data, headers, client_ip)
             if method == "GET" and target.split("?", 1)[0] == "/api/health" and result.status == 200:
+                before_connect = perf_counter()
                 with self.connect() as conn:
+                    after_connect = perf_counter()
                     conn.execute("SELECT 1").fetchone()
-                return Response(200, {"ok": True, "database": "turso"})
+                    after_ping = perf_counter()
+                timing = (
+                    f"route;dur={(before_connect - started) * 1000:.1f},"
+                    f"connect;dur={(after_connect - before_connect) * 1000:.1f},"
+                    f"ping;dur={(after_ping - after_connect) * 1000:.1f}"
+                )
+                return Response(200, {"ok": True, "database": "turso"}, {"Server-Timing": timing})
             return result
         except turso_serverless.IntegrityError:
             return Response(409, {"error": {"code": "conflict", "message": "The requested change conflicts with existing data"}})
