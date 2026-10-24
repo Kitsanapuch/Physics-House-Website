@@ -545,7 +545,9 @@
       state.data = { ...dashboard, ...payroll };
       state.classes = classes.classes || [];
     } else {
-      const quickOverview = initial && (!hashTarget() || hashTarget() === 'overview');
+      // A deep link should display its selected section and a safe loading
+      // placeholder as promptly as the overview does.
+      const quickOverview = initial;
       const dashboardRequest = api('/api/admin/dashboard?compact=1').then((value) => ({ value }), (error) => ({ error }));
       const detailsRequest = Promise.all([
         api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'),
