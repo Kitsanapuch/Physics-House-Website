@@ -15,7 +15,7 @@
     pending_confirmation: 'รอยืนยันอัตรา', active: 'กำลังเรียน'
   };
   const $ = (id) => document.getElementById(id);
-  const state = { me: null, csrf: '', data: null, courses: [], academic: null, classes: [], paymentAccount: null, sheetSyncStatus: null, nav: [], viewId: '', viewTargetId: '', homeHeading: '', homeSubtitle: '' };
+  const state = { me: null, csrf: '', data: null, courses: [], academic: null, classes: [], paymentAccount: null, sheetSyncStatus: null, nav: [], viewId: '', viewTargetId: '', homeHeading: '', homeSubtitle: '', loadingDetails: false };
   let activeTasks = 0;
   let adminClaimIds = null;
   let adminClaimPollBusy = false;
@@ -479,36 +479,8 @@
     }
   }
 
-  async function load() {
+  function renderWorkspace() {
     const role = state.me.role;
-    if (role === 'student') {
-      const [dashboard, catalog, classes, paymentAccount] = await Promise.all([api('/api/student/dashboard'), api('/api/courses'), api('/api/student/classes'), api('/api/payment-account')]);
-      state.data = dashboard;
-      state.courses = catalog.courses || [];
-      state.classes = classes.classes || [];
-      state.paymentAccount = paymentAccount.payment_account || null;
-    } else if (role === 'teacher') {
-      const [dashboard, payroll, classes] = await Promise.all([api('/api/teacher/dashboard'), api('/api/teacher/payroll'), api('/api/teacher/classes')]);
-      state.data = { ...dashboard, ...payroll };
-      state.classes = classes.classes || [];
-    } else {
-      const [dashboard, rates, payroll, tuition, academic, paymentAccount] = await Promise.all([
-        api('/api/admin/dashboard?compact=1'), api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'), api('/api/admin/academic'), api('/api/payment-account')
-      ]);
-      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || [], staff: (academic.users || []).filter((person) => person.role === 'teacher' || person.role === 'admin'), unbilled_enrollments: tuition.enrollments || [] };
-      state.courses = (academic.courses || []).filter((course) => course.active);
-      state.academic = academic;
-      state.classes = academic.classes || [];
-      state.paymentAccount = paymentAccount.payment_account || null;
-      // Sheet status is informational and must not hold up the working area.
-      void api('/api/admin/sheet-sync/status').then((status) => {
-        state.sheetSyncStatus = status;
-        renderSheetSyncStatus();
-      }).catch(() => {
-        state.sheetSyncStatus = { request_failed: true };
-        renderSheetSyncStatus();
-      });
-    }
     const hadView = Boolean(state.viewTargetId);
     const priorScrollY = window.scrollY;
     $('live-content').innerHTML = formLayout();
@@ -521,6 +493,74 @@
     const target = state.viewTargetId || hashTarget() || 'overview';
     if (!showView(target, { historyMode: hadView ? 'none' : 'replace', scroll: !hadView })) showView('overview', { historyMode: 'replace', scroll: !hadView });
     if (hadView) window.scrollTo({ top: priorScrollY, behavior: 'auto' });
+  }
+
+  function fetchSheetSyncStatus() {
+    // Sheet status is informational and must not hold up the working area.
+    void api('/api/admin/sheet-sync/status').then((status) => {
+      state.sheetSyncStatus = status;
+      renderSheetSyncStatus();
+    }).catch(() => {
+      state.sheetSyncStatus = { request_failed: true };
+      renderSheetSyncStatus();
+    });
+  }
+
+  function setAdminDetailsBusy(busy) {
+    state.loadingDetails = busy;
+    for (const button of document.querySelectorAll('#side-nav button[data-target], #mobile-nav button[data-target]')) {
+      button.disabled = busy && button.dataset.target !== 'overview';
+    }
+    const alertButton = $('payment-alert-button');
+    if (alertButton) alertButton.disabled = busy;
+  }
+
+  async function load({ initial = false } = {}) {
+    const role = state.me.role;
+    if (role === 'student') {
+      const [dashboard, catalog, classes, paymentAccount] = await Promise.all([api('/api/student/dashboard'), api('/api/courses'), api('/api/student/classes'), api('/api/payment-account')]);
+      state.data = dashboard;
+      state.courses = catalog.courses || [];
+      state.classes = classes.classes || [];
+      state.paymentAccount = paymentAccount.payment_account || null;
+    } else if (role === 'teacher') {
+      const [dashboard, payroll, classes] = await Promise.all([api('/api/teacher/dashboard'), api('/api/teacher/payroll'), api('/api/teacher/classes')]);
+      state.data = { ...dashboard, ...payroll };
+      state.classes = classes.classes || [];
+    } else {
+      const quickOverview = initial && (!hashTarget() || hashTarget() === 'overview');
+      const dashboardRequest = api('/api/admin/dashboard?compact=1');
+      const detailsRequest = Promise.all([
+        api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'),
+        api('/api/admin/academic'), api('/api/payment-account')
+      ]).then((value) => ({ value }), (error) => ({ error }));
+      fetchSheetSyncStatus();
+      const dashboard = await dashboardRequest;
+      if (quickOverview) {
+        state.data = { ...dashboard, users: [], staff: [] };
+        state.courses = [];
+        state.academic = null;
+        state.classes = [];
+        state.paymentAccount = null;
+        setAdminDetailsBusy(true);
+        renderWorkspace();
+        // The overview totals already come from the server. Hide the task
+        // queue until its enrollment data arrives, so no zero is misleading.
+        const queue = $('overview')?.querySelector('.action-queue');
+        if (queue) queue.hidden = true;
+        $('overview')?.append(element('p', 'muted', 'กำลังโหลดรายการอื่น ๆ…'));
+      }
+      const details = await detailsRequest;
+      if (details.error) throw details.error;
+      const [rates, payroll, tuition, academic, paymentAccount] = details.value;
+      state.data = { ...dashboard, ...rates, ...payroll, invoices: tuition.invoices || dashboard.invoices || [], receipts: tuition.receipts || [], users: academic.users || [], staff: (academic.users || []).filter((person) => person.role === 'teacher' || person.role === 'admin'), unbilled_enrollments: tuition.enrollments || [] };
+      state.courses = (academic.courses || []).filter((course) => course.active);
+      state.academic = academic;
+      state.classes = academic.classes || [];
+      state.paymentAccount = paymentAccount.payment_account || null;
+      if (quickOverview) setAdminDetailsBusy(false);
+    }
+    renderWorkspace();
   }
 
   function renderStudent() {
@@ -1733,7 +1773,7 @@
         passwordDialog(true); return;
       }
       $('live-content').append(element('section', 'panel', 'กำลังโหลดข้อมูลล่าสุด…'));
-      await load();
+      await load({ initial: true });
       window.setTimeout(() => document.body.classList.add('dashboard-mounted'), 520);
     } catch (error) {
       document.body.innerHTML = '';
