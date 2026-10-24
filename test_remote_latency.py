@@ -179,6 +179,12 @@ class RemoteLoginLatencyTests(unittest.TestCase):
             with self.subTest(name=name):
                 separate = self.owner.handle("GET", path, None, headers, "192.0.2.1")
                 self.assertEqual(bundled.body[name], separate.body)
+        small = self.owner.handle("GET", "/api/admin/bootstrap?group=small", None,
+                                  headers, "192.0.2.1")
+        self.assertEqual(small.status, 200)
+        self.assertEqual(set(small.body), {"rates", "payroll", "payment_account"})
+        for name in small.body:
+            self.assertEqual(small.body[name], bundled.body[name])
 
     def test_protected_page_bootstrap_uses_existing_session_permissions(self) -> None:
         self.assertEqual(self.owner.static_auth("/dashboard.html", ""), ("login", None))

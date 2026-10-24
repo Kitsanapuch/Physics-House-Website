@@ -1305,6 +1305,8 @@ class PhysicsPlusApp:
                 "academic": ("/api/admin/academic", {}),
                 "payment_account": ("/api/payment-account", {}),
             }
+            if query.get("group") == ["small"]:
+                paths = {name: paths[name] for name in ("rates", "payroll", "payment_account")}
             return Response(200, {
                 name: self._dispatch(conn, "GET", endpoint, params, {}, user).body
                 for name, (endpoint, params) in paths.items()

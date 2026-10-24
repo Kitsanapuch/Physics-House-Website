@@ -547,12 +547,17 @@
       };
       const bundled = debugOptions.get('pp_bundle') === '1'
         ? timedApi('/api/admin/bootstrap') : null;
+      const smallBundle = debugOptions.get('pp_bundle') === 'small'
+        ? timedApi('/api/admin/bootstrap?group=small') : null;
       const dashboardRequest = (bundled
         ? bundled.then((value) => value.dashboard)
         : timedApi('/api/admin/dashboard?compact=1'))
         .then((value) => ({ value }), (error) => ({ error }));
       const detailsRequest = (bundled
         ? bundled.then((value) => [value.rates, value.payroll, value.tuition, value.academic, value.payment_account])
+        : smallBundle
+          ? Promise.all([smallBundle, timedApi('/api/admin/invoices'), timedApi('/api/admin/academic')])
+            .then(([value, tuition, academic]) => [value.rates, value.payroll, tuition, academic, value.payment_account])
         : Promise.all([
           timedApi('/api/admin/rates'), timedApi('/api/admin/payroll-runs'), timedApi('/api/admin/invoices'),
           timedApi('/api/admin/academic'), timedApi('/api/payment-account')
