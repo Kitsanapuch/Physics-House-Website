@@ -489,7 +489,11 @@
     else if (role === 'teacher') renderTeacher();
     else renderAdmin();
     if (role !== 'teacher') renderPaymentAccount();
-    if (role === 'admin') { renderSheetSyncStatus(); updateAdminPaymentAlert(state.data.pending_payment_claims || []); }
+    if (role === 'admin') {
+      renderSheetSyncStatus();
+      updateAdminPaymentAlert(state.data.pending_payment_claims || [], false,
+        Number(state.data.overview_counts?.pending_claims ?? (state.data.pending_payment_claims || []).length));
+    }
     const target = state.viewTargetId || hashTarget() || 'overview';
     if (!showView(target, { historyMode: hadView ? 'none' : 'replace', scroll: !hadView })) showView('overview', { historyMode: 'replace', scroll: !hadView });
     if (hadView) window.scrollTo({ top: priorScrollY, behavior: 'auto' });
@@ -529,27 +533,37 @@
       state.classes = classes.classes || [];
     } else {
       const quickOverview = initial && (!hashTarget() || hashTarget() === 'overview');
-      const dashboardRequest = api('/api/admin/dashboard?compact=1');
+      const dashboardRequest = api('/api/admin/dashboard?compact=1').then((value) => ({ value }), (error) => ({ error }));
       const detailsRequest = Promise.all([
         api('/api/admin/rates'), api('/api/admin/payroll-runs'), api('/api/admin/invoices'),
         api('/api/admin/academic'), api('/api/payment-account')
       ]).then((value) => ({ value }), (error) => ({ error }));
+      // The small first-screen read is optional: a failure or a slower reply
+      // must never hold up the existing complete workspace.
+      const overviewRequest = quickOverview
+        ? api('/api/admin/overview').then((value) => ({ value }), (error) => ({ error }))
+        : null;
       fetchSheetSyncStatus();
-      const dashboard = await dashboardRequest;
       if (quickOverview) {
-        state.data = { ...dashboard, users: [], staff: [] };
-        state.courses = [];
-        state.academic = null;
-        state.classes = [];
-        state.paymentAccount = null;
-        setAdminDetailsBusy(true);
-        renderWorkspace();
-        // The overview totals already come from the server. Hide the task
-        // queue until its enrollment data arrives, so no zero is misleading.
-        const queue = $('overview')?.querySelector('.action-queue');
-        if (queue) queue.hidden = true;
-        $('overview')?.append(element('p', 'muted', 'กำลังโหลดรายการอื่น ๆ…'));
+        const first = await Promise.race([
+          overviewRequest.then((result) => ({ kind: 'overview', result })),
+          Promise.all([dashboardRequest, detailsRequest]).then(() => ({ kind: 'full' }))
+        ]);
+        if (first.kind === 'overview' && !first.result.error) {
+          state.data = { overview_counts: first.result.value, invoices: [], users: [], staff: [] };
+          state.courses = [];
+          state.academic = null;
+          state.classes = [];
+          state.paymentAccount = null;
+          setAdminDetailsBusy(true);
+          renderWorkspace();
+          for (const button of $('overview')?.querySelectorAll('.action-queue button') || []) button.disabled = true;
+          $('overview')?.append(element('p', 'muted', 'กำลังโหลดรายละเอียดรายการอื่น ๆ…'));
+        }
       }
+      const dashboardResult = await dashboardRequest;
+      if (dashboardResult.error) throw dashboardResult.error;
+      const dashboard = dashboardResult.value;
       const details = await detailsRequest;
       if (details.error) throw details.error;
       const [rates, payroll, tuition, academic, paymentAccount] = details.value;
@@ -856,6 +870,7 @@
     const unbilled = state.data.unbilled_enrollments || [];
     const claims = state.data.pending_payment_claims || [];
     const times = state.data.pending_time_entries || [];
+    const overview = state.data.overview_counts || null;
     const rates = state.data.rates || [];
     const runs = state.data.payroll_runs || [];
     const users = state.data.users || [];
@@ -906,21 +921,21 @@
       const query = event.currentTarget.value.trim().toLocaleLowerCase('th');
       for (const row of userBody.rows) row.hidden = Boolean(query) && !row.textContent.toLocaleLowerCase('th').includes(query);
     });
-    $('admin-outstanding').textContent = thaiMoney(invoices.filter((item) => item.status !== 'void').reduce((sum, item) => sum + Math.max(0, item.amount_satang - item.paid_satang), 0));
-    $('admin-outstanding').nextElementSibling.textContent = `จาก ${invoices.length} ใบแจ้งยอดล่าสุดที่แสดง`;
-    $('admin-claim-count').textContent = String(claims.length);
-    $('admin-time-count').textContent = String(times.length);
+    $('admin-outstanding').textContent = thaiMoney(overview ? overview.outstanding_satang : invoices.filter((item) => item.status !== 'void').reduce((sum, item) => sum + Math.max(0, item.amount_satang - item.paid_satang), 0));
+    $('admin-outstanding').nextElementSibling.textContent = `จาก ${overview ? overview.invoice_count : invoices.length} ใบแจ้งยอดล่าสุดที่แสดง`;
+    $('admin-claim-count').textContent = String(overview ? overview.pending_claims : claims.length);
+    $('admin-time-count').textContent = String(overview ? overview.pending_times : times.length);
     const overdue = invoices.filter((item) => item.status !== 'void' && item.due_date < bangkokToday() && item.amount_satang > item.paid_satang);
     const queue = element('section', 'panel action-queue');
     queue.append(element('h2', '', 'งานที่ต้องจัดการ'));
     queue.append(element('p', 'muted', 'จำนวนแสดงจากข้อมูลล่าสุดที่โหลดในหน้านี้ กดเพื่อไปยังรายการที่เกี่ยวข้อง'));
     const queueGrid = element('div', 'queue-grid');
     queueGrid.append(
-      queueItem(unbilled.length, 'รอแจ้งยอดค่าเรียน', 'นักเรียนสมัครคอร์สแล้ว ผู้ดูแลต้องกำหนดยอด', 'admin-finance', true),
-      queueItem(claims.length, 'รอตรวจการชำระ', 'ตรวจเงินและเลขอ้างอิงก่อนกดยืนยัน', 'admin-claims', true),
-      queueItem(times.length, 'รอตรวจเวลาสอน', 'เช็กชื่อและตรวจอัตราก่อนอนุมัติ', 'admin-teaching', true),
-      queueItem(overdue.length, 'ใบแจ้งยอดเลยกำหนด', 'ยังมียอดคงเหลือที่ต้องติดตาม', 'admin-invoices', true),
-      queueItem(Number(notificationCounts.dead) || 0, 'อีเมลส่งไม่สำเร็จ', 'ตรวจสถานะการแจ้งเตือน', 'admin-notifications', true)
+      queueItem(overview ? overview.unbilled_count : unbilled.length, 'รอแจ้งยอดค่าเรียน', 'นักเรียนสมัครคอร์สแล้ว ผู้ดูแลต้องกำหนดยอด', 'admin-finance', true),
+      queueItem(overview ? overview.pending_claims : claims.length, 'รอตรวจการชำระ', 'ตรวจเงินและเลขอ้างอิงก่อนกดยืนยัน', 'admin-claims', true),
+      queueItem(overview ? overview.pending_times : times.length, 'รอตรวจเวลาสอน', 'เช็กชื่อและตรวจอัตราก่อนอนุมัติ', 'admin-teaching', true),
+      queueItem(overview ? overview.overdue_count : overdue.length, 'ใบแจ้งยอดเลยกำหนด', 'ยังมียอดคงเหลือที่ต้องติดตาม', 'admin-invoices', true),
+      queueItem(overview ? overview.failed_notices : Number(notificationCounts.dead) || 0, 'อีเมลส่งไม่สำเร็จ', 'ตรวจสถานะการแจ้งเตือน', 'admin-notifications', true)
     );
     queue.append(queueGrid);
     $('overview').querySelector('.stats').after(queue);
@@ -947,6 +962,7 @@
       table.append(head, body); wrap.append(table); notificationPanel.append(wrap);
     } else notificationPanel.append(element('p', 'muted', 'ยังไม่มีอีเมลส่งไม่สำเร็จ'));
     queue.after(notificationPanel);
+    if (overview) notificationPanel.hidden = true;
     const enrollmentSelect = $('invoice-enrollment'); option(enrollmentSelect, '', 'เลือกนักเรียนและคอร์ส');
     for (const enrollment of unbilled) option(enrollmentSelect, enrollment.enrollment_id, `${enrollment.student_name} · ${enrollment.course_title}`);
     enrollmentSelect.addEventListener('change', () => {

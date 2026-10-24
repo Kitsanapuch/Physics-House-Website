@@ -1286,6 +1286,8 @@ class PhysicsPlusApp:
             self._require_role(user, attendance_match.group(1))
             return self._set_attendance(conn, user, attendance_match.group(2), data)
         self._require_role(user, "admin")
+        if method == "GET" and path == "/api/admin/overview":
+            return self._admin_overview(conn)
         if method == "GET" and path == "/api/admin/dashboard":
             return self._admin_dashboard(conn, compact=query.get("compact") == ["1"])
         if method == "GET" and path == "/api/admin/payment-alerts":
@@ -1746,6 +1748,29 @@ class PhysicsPlusApp:
                               "courses": [dict(row) for row in courses],
                               "classes": self._class_list(conn),
                               "enrollments": [dict(row) for row in enrollments]})
+
+    @staticmethod
+    def _admin_overview(conn: sqlite3.Connection) -> Response:
+        """One read for the first screen; detailed records remain in existing APIs."""
+        today = datetime.now(BANGKOK).date().isoformat()
+        row = conn.execute(
+            "WITH recent AS ("
+            "SELECT i.id,i.amount_satang,i.status,i.due_date,"
+            "COALESCE((SELECT SUM(p.amount_satang) FROM payments p WHERE p.invoice_id=i.id),0) paid_satang "
+            "FROM invoices i ORDER BY i.created_at DESC,i.id DESC LIMIT 500) "
+            "SELECT "
+            "(SELECT COUNT(*) FROM recent) invoice_count,"
+            "(SELECT COALESCE(SUM(CASE WHEN amount_satang>paid_satang THEN amount_satang-paid_satang ELSE 0 END),0) "
+            "FROM recent WHERE status!='void') outstanding_satang,"
+            "(SELECT COUNT(*) FROM recent WHERE status!='void' AND due_date<? AND amount_satang>paid_satang) overdue_count,"
+            "(SELECT COUNT(*) FROM payment_claims WHERE status='pending') pending_claims,"
+            "(SELECT COUNT(*) FROM time_entries WHERE status='submitted') pending_times,"
+            "(SELECT MIN(COUNT(*),500) FROM enrollments e WHERE e.status='active' AND NOT EXISTS"
+            "(SELECT 1 FROM invoices i WHERE i.enrollment_id=e.id)) unbilled_count,"
+            "(SELECT COUNT(*) FROM notification_outbox WHERE status='dead') failed_notices",
+            (today,),
+        ).fetchone()
+        return Response(200, dict(row))
 
     def _admin_dashboard(self, conn: sqlite3.Connection, *, compact: bool = False) -> Response:
         pending = conn.execute("SELECT t.id,t.actual_start,t.actual_end,t.break_minutes,u.name teacher_name,c.title course_title,c.subject,c.level,s.id session_id,(SELECT COUNT(*) FROM attendance a WHERE a.session_id=s.id AND a.status='present') student_count FROM time_entries t JOIN users u ON u.id=t.teacher_id JOIN class_sessions s ON s.id=t.session_id JOIN courses c ON c.id=s.course_id WHERE t.status='submitted' ORDER BY t.submitted_at DESC").fetchall()

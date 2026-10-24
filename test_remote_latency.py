@@ -164,6 +164,18 @@ class RemoteLoginLatencyTests(unittest.TestCase):
         self.assertEqual(payload["csrf_token"], login.body["csrf_token"])
         self.assertEqual(self.owner.static_auth("/student", cookie), ("forbidden", None))
 
+    def test_fast_admin_overview_reports_current_counts(self) -> None:
+        login = self._login(password="SafeTestPassword123!")
+        cookie = login.headers["Set-Cookie"].split(";", 1)[0]
+        summary = self.owner.handle("GET", "/api/admin/overview", None,
+                                    {"host": "school.example", "cookie": cookie}, "192.0.2.1")
+        self.assertEqual(summary.status, 200, summary.body)
+        self.assertEqual(summary.body, {
+            "invoice_count": 0, "outstanding_satang": 0, "overdue_count": 0,
+            "pending_claims": 0, "pending_times": 0, "unbilled_count": 0,
+            "failed_notices": 0,
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

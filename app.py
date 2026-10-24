@@ -262,6 +262,7 @@ def public_asset(asset: str):
         response = make_response(page.replace("__PP_AUTH_BOOTSTRAP__", bootstrap), 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["Cache-Control"] = "no-store"
+        response.headers["Vary"] = "Cookie"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
